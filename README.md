@@ -80,7 +80,7 @@ RUB, KZT), интерфейс — русский.
 
 ## Локальный запуск
 
-Нужен Node.js 20+ и PostgreSQL 16 — проще всего из docker-compose.
+Нужен Node.js 22.22+ или 24 (тестам фронтендов — jsdom 30) и PostgreSQL 16 — проще всего из docker-compose.
 
 ```bash
 cd qwik
