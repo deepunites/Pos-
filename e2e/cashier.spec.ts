@@ -50,9 +50,9 @@ test("a cashier pairs the register, signs in, sells and gets paid", async ({ pag
   await page.getByText("Хлеб «Нон» белый").first().click();
   await expect(page.getByText(/31\s500\s*сўм/).first()).toBeVisible();
 
-  // 5. Наличные: F8, приём оплаты.
+  // 5. Наличные: F8 — правая панель переходит в оплату, без сдачи.
   await page.keyboard.press("F8");
-  await page.getByRole("button", { name: /Принять оплату/ }).click();
+  await page.getByRole("button", { name: "Оплатить", exact: true }).click();
   await expect(page.getByText("Чек пуст")).toBeVisible();
 
   // 6. Сервер видит то же, что касса: оплаченный заказ на 31 500, склад
@@ -83,4 +83,43 @@ test("the register remembers its shop and its cashier after a reload", async ({ 
   // Без повторной привязки и PIN — сразу рабочий экран.
   await expect(page.getByText(/Сканер готов|Открытие смены/).first()).toBeVisible();
   await expect(page.getByPlaceholder("например, my-shop")).toHaveCount(0);
+});
+
+test("card + cash: the cashier types the card part, the cash part counts itself", async ({ page }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("например, my-shop").fill("demo-market");
+  await page.getByRole("button", { name: "Продолжить" }).click();
+  await page.getByText("Азиза Р.").click();
+  await pressPin(page, "1234");
+  const openShift = page.getByRole("button", { name: "Открыть смену" });
+  await expect(page.getByText(/Сканер готов|Открытие смены/).first()).toBeVisible();
+  if (await openShift.isVisible()) {
+    await page.getByRole("button", { name: "50К" }).click();
+    await openShift.click();
+  }
+  const before = await api<{ totalCashSales: number; totalCardSales: number }>(page, "/cash-shifts/current", "cashier");
+
+  const scan = page.getByPlaceholder("Штрихкод, код или название товара");
+  await scan.fill(`2*${MILK}`);
+  await scan.press("Enter");
+  await page.getByText("Хлеб «Нон» белый").first().click();
+  await expect(page.getByText(/31\s500\s*сўм/).first()).toBeVisible();
+
+  // F10 — «Карта + наличные»: набрали сумму картой, наличные — остаток сами.
+  await page.keyboard.press("F10");
+  await page.keyboard.type("20000");
+  await expect(page.getByText(/11\s500/).first()).toBeVisible();
+  await page.getByRole("button", { name: /^Оплатить · / }).click();
+  await expect(page.getByText(/карта \+ наличные/)).toBeVisible();
+
+  const [order] = await api<{ total: number; payments: { method: string; amount: number }[] }[]>(page, "/orders?limit=1");
+  expect(order.total).toBe(31500);
+  expect(order.payments.map((p) => [p.method, p.amount]).sort()).toEqual([
+    ["card", 20000],
+    ["cash", 11500],
+  ]);
+
+  const after = await api<{ totalCashSales: number; totalCardSales: number }>(page, "/cash-shifts/current", "cashier");
+  expect(after.totalCardSales - before.totalCardSales).toBe(20000);
+  expect(after.totalCashSales - before.totalCashSales).toBe(11500);
 });

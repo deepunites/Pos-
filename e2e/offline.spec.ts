@@ -64,7 +64,7 @@ test("without a connection the register sells for cash and sends every sale once
     await scan.press("Enter");
     await expect(page.getByText("Молоко «Лактис» 3,2% 1 л").first()).toBeVisible();
     await page.keyboard.press("F8");
-    await page.getByRole("button", { name: /Принять оплату/ }).click();
+    await page.getByRole("button", { name: "Оплатить", exact: true }).click();
     await expect(page.getByText("Оплачено без связи")).toBeVisible();
     await expect(page.getByText("Чек пуст")).toBeVisible();
     await page.keyboard.press("Escape");

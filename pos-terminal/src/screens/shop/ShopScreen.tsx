@@ -14,7 +14,7 @@ import { useCartStore } from "../../store/cartStore";
 import { useThemeStore } from "../../store/themeStore";
 import { useMoney } from "../../hooks/useMoney";
 import { useDebounced } from "../../hooks/useDebounced";
-import type { CartItem, CashShift, PaymentMethod, Product } from "../../types";
+import type { CartItem, CashShift, Product } from "../../types";
 import { fetchNational } from "../../utils/national";
 import { beep, setSoundEnabled, soundEnabled } from "../../utils/sound";
 import { gramsPerUnit, kgToGrams, parseDecimal, pricePerKg, stockInKg, weightLineTotal } from "../../utils/weight";
@@ -26,11 +26,11 @@ import QuickKeys from "./QuickKeys";
 import Receipt from "./Receipt";
 import SaleDone from "./SaleDone";
 import ScanBar from "./ScanBar";
-import ShopPayment, { type SaleResult } from "./ShopPayment";
+import ShopPayment, { type PayMode, type SaleResult } from "./ShopPayment";
 import SidePanel from "./SidePanel";
 import TileCatalog, { type TileFilter } from "./TileCatalog";
 import { CustomerModal, ParkedModal } from "./Modals";
-import { QR_ENABLED, emojiFor, formatQty, productTitle, shelfPrice, stockLeft, weightUnit } from "./shopProduct";
+import { emojiFor, formatQty, productTitle, shelfPrice, stockLeft, weightUnit } from "./shopProduct";
 
 interface ShopScreenProps {
   user: { firstName: string; lastName: string; email: string; role: string };
@@ -91,7 +91,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
 
   const [weightFor, setWeightFor] = useState<{ product: Product; lineId?: string; initialGrams?: number } | null>(null);
   const [qtyFor, setQtyFor] = useState<{ product: Product; line: CartItem } | null>(null);
-  const [payMethod, setPayMethod] = useState<PaymentMethod | null>(null);
+  const [payMethod, setPayMethod] = useState<PayMode | null>(null);
   const [sale, setSale] = useState<SaleResult | null>(null);
   const [showParked, setShowParked] = useState(false);
   const [showCustomer, setShowCustomer] = useState(false);
@@ -484,13 +484,13 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   }, [fail, parkCurrent]);
 
   const openPay = useCallback(
-    (method: PaymentMethod) => {
+    (method: PayMode) => {
       if (useCartStore.getState().items.length === 0) {
         fail("Чек пуст");
         return;
       }
       if (method !== "cash" && offlineNow()) {
-        fail("Без связи — только наличные: картой и по QR оплатить нельзя");
+        fail("Без связи — только наличные: картой оплатить нельзя");
         return;
       }
       setPayMethod(method);
@@ -522,8 +522,9 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
     const onKey = (e: KeyboardEvent) => {
       const s = live.current;
 
-      // While paying, F8–F10 switch the method rather than open a second window.
-      const byKey: Record<string, PaymentMethod> = { F8: "cash", F9: "card", ...(QR_ENABLED ? { F10: "qr" as const } : {}) };
+      // While paying, F8–F10 switch the method rather than open a second one.
+      // QR (когда его вернут) — без своей клавиши: F10 теперь «Карта + наличные».
+      const byKey: Record<string, PayMode> = { F8: "cash", F9: "card", F10: "mixed" };
       if (s.payMethod && byKey[e.key]) {
         e.preventDefault();
         setPayMethod(byKey[e.key]);
@@ -744,23 +745,27 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
           )}
         </section>
 
-        <SidePanel
-          total={total}
-          positions={items.length}
-          customerName={customerName}
-          parts={parts}
-          armed={armed}
-          onDisarm={() => setArmed(null)}
-          onKey={keyPress}
-          onBackspace={backspace}
-          onClear={clearField}
-          onMultiply={multiply}
-          onEnter={() => void submit()}
-          onCustomer={() => setShowCustomer(true)}
-          onPay={openPay}
-          canPay={items.length > 0}
-          offline={offline}
-        />
+        {payMethod ? (
+          <ShopPayment key={payMethod} mode={payMethod} total={total} shiftId={shift.id} onClose={() => setPayMethod(null)} onPaid={onPaid} />
+        ) : (
+          <SidePanel
+            total={total}
+            positions={items.length}
+            customerName={customerName}
+            parts={parts}
+            armed={armed}
+            onDisarm={() => setArmed(null)}
+            onKey={keyPress}
+            onBackspace={backspace}
+            onClear={clearField}
+            onMultiply={multiply}
+            onEnter={() => void submit()}
+            onCustomer={() => setShowCustomer(true)}
+            onPay={openPay}
+            canPay={items.length > 0}
+            offline={offline}
+          />
+        )}
       </div>
 
       {weightFor && (
@@ -814,7 +819,6 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         />
       )}
 
-      {payMethod && <ShopPayment method={payMethod} total={total} shiftId={shift.id} onClose={() => setPayMethod(null)} onPaid={onPaid} />}
       {sale && <SaleDone result={sale} onNext={nextCheck} />}
 
       {showParked && (

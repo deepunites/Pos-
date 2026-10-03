@@ -5,7 +5,7 @@ import { useMoney } from "../../hooks/useMoney";
 import { printOfflineReceipt, printReceipt } from "../../utils/printReceipt";
 import type { SaleResult } from "./ShopPayment";
 
-const LABEL = { cash: "наличные", card: "карта", qr: "QR" } as const;
+const LABEL = { cash: "наличные", card: "карта", mixed: "карта + наличные", qr: "QR" } as const;
 
 interface SaleDoneProps {
   result: SaleResult;
@@ -67,6 +67,11 @@ export default function SaleDone({ result, onNext }: SaleDoneProps) {
           <div className="sub tab">
             {offline ? "Чек сохранён на кассе" : `Чек № ${result.order.orderNumber}`} · {LABEL[result.method]} · {money(result.total)}
           </div>
+          {result.method === "mixed" && result.cardAmount !== undefined && (
+            <div className="sub tab">
+              картой {money(result.cardAmount)} · наличными {money(result.total - result.cardAmount)}
+            </div>
+          )}
           {offline && <div className="sh-done-off">Уйдёт на сервер сам, когда появится связь. Товар можно отдавать.</div>}
 
           {result.method === "cash" && result.change > 0 && (

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Banknote, Check, CreditCard, Delete, QrCode, X } from "lucide-react";
+import { ArrowLeft, Banknote, Check, CreditCard, Delete, QrCode, WalletCards } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import { useCartStore } from "../../store/cartStore";
-import type { Order, PaymentMethod, Product } from "../../types";
+import type { Order, Product } from "../../types";
 import { useMoney } from "../../hooks/useMoney";
 import { round2 } from "../../utils/money";
 import { parseDecimal } from "../../utils/weight";
@@ -15,57 +15,78 @@ import { enqueueSale, stockUnits, type QueuedSale } from "../../services/offline
 import { takeFromCatalog } from "../../services/offlineCatalog";
 import { sessionClaims } from "../../services/session";
 
+/** Как платит покупатель. `mixed` — часть картой, остаток наличными. */
+export type PayMode = "cash" | "card" | "mixed" | "qr";
+
 export interface SaleResult {
   order: Order;
   /** Пробит без связи: чек на планшете, уйдёт на сервер позже (номера ещё нет). */
   offline?: QueuedSale;
-  method: PaymentMethod;
+  method: PayMode;
   total: number;
   /** What the customer handed over (cash only); null when paid exactly. */
   tendered: number | null;
   change: number;
+  /** «Карта + наличные»: сколько прошло картой (остальное — наличными). */
+  cardAmount?: number;
 }
 
 interface ShopPaymentProps {
-  method: PaymentMethod;
+  mode: PayMode;
   total: number;
   shiftId: string;
+  /** Назад к выбору способа — чек остаётся как был. */
   onClose: () => void;
   onPaid: (result: SaleResult) => void;
 }
 
-const METHODS: Record<PaymentMethod, { label: string; icon: typeof Banknote }> = {
+const PAY_MODES: Record<PayMode, { label: string; icon: typeof Banknote }> = {
   cash: { label: "Наличные", icon: Banknote },
   card: { label: "Карта", icon: CreditCard },
+  mixed: { label: "Карта + наличные", icon: WalletCards },
   qr: { label: "QR", icon: QrCode },
 };
 
-/**
- * Banknotes the customer is likely to hand over: the next round sum above the
- * total for each denomination, smallest first. 185 576 → 186 000, 190 000, 200 000.
- */
 /** Продажа без связи невозможна (не наличные, слишком давно без связи) — сказать кассиру почему. */
 class OfflineRefused extends Error {}
 
 const CASH_CHECKOUT_TIMEOUT_MS = 8000;
 
+/**
+ * Banknotes the customer is likely to hand over: the next round sum above the
+ * total for each denomination, smallest first. 185 576 → 186 000, 190 000, 200 000.
+ */
 export function cashSuggestions(total: number, fractionDigits: number): number[] {
   const denominations = fractionDigits === 0 ? [1_000, 5_000, 10_000, 50_000, 100_000, 200_000] : [1, 5, 10, 20, 50, 100];
   const sums = denominations.map((d) => Math.ceil(total / d) * d).filter((sum) => sum > total);
   return Array.from(new Set(sums)).sort((a, b) => a - b).slice(0, 3);
 }
 
-export default function ShopPayment({ method, total, shiftId, onClose, onPaid }: ShopPaymentProps) {
+/**
+ * Оплата чека — в правой панели кассы, а не во всплывающем окне: чек слева
+ * виден, клавиатура и зелёная кнопка там же, где были. Наличные — «клиент дал»
+ * и сдача; карта — подтверждение «Оплачено»; «Карта + наличные» — сумма картой,
+ * наличные считаются сами.
+ */
+export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: ShopPaymentProps) {
   const { money, parts, fractionDigits } = useMoney();
   const qc = useQueryClient();
   const { customerName, customerPhone } = useCartStore();
   const [text, setText] = useState("");
 
-  const cash = method === "cash";
-  const tendered = text ? parseDecimal(text) : null;
-  const paid = cash ? tendered ?? total : total;
-  const change = Math.max(0, round2(paid - total));
+  const cash = mode === "cash";
+  const mixed = mode === "mixed";
+  const typing = cash || mixed;
+
+  const entered = text ? parseDecimal(text) : null;
+  // Наличные: что дал покупатель (пусто — без сдачи).
+  const tendered = cash ? entered : null;
+  const change = cash ? Math.max(0, round2((tendered ?? total) - total)) : 0;
   const short = cash && tendered !== null && tendered < total - 0.005;
+  // «Карта + наличные»: картой — сколько набрали, наличными — остаток.
+  const cardPart = mixed ? round2(entered ?? 0) : 0;
+  const cashPart = mixed ? round2(total - cardPart) : 0;
+  const splitOk = !mixed || (cardPart > 0 && cashPart > 0);
 
   const offlineNow = useConnection((s) => s.problem !== null);
 
@@ -82,7 +103,9 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
         customerPhone: customerPhone || undefined,
         items: lines,
         expectedTotal: total,
-        payment: { method },
+        ...(mixed
+          ? { payments: [{ method: "card", amount: cardPart }, { method: "cash", amount: cashPart }] }
+          : { payment: { method: mode } }),
       };
 
       // Офлайн-режим: без связи — только наличные, и чек ложится на планшет.
@@ -97,7 +120,7 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
           cashierId: claims.id,
           items,
           total,
-          tendered: cash ? tendered : null,
+          tendered,
           customerName,
           customerPhone,
           online,
@@ -114,7 +137,7 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
       try {
         // Наличные не ждут 30 секунд «висящего» интернета: через 8 секунд чек
         // ложится на планшет (с этим же ключом — дошёл он до сервера или нет,
-        // повтор не создаст второй). Карту и QR ждём дольше: им без связи некуда.
+        // повтор не создаст второй). Карту ждём дольше: ей без связи некуда.
         const res = await api.post("/orders/checkout", body, {
           headers: { "Idempotency-Key": key },
           ...(cash ? { timeout: CASH_CHECKOUT_TIMEOUT_MS } : {}),
@@ -131,7 +154,7 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
       for (const key of ["shop-tiles", "shop-quick", "shop-suggest", "cash-shift"]) qc.invalidateQueries({ queryKey: [key] });
       useCartStore.getState().clearCart();
       const shown = order ?? ({ id: offline!.id, orderNumber: "", total } as unknown as Order);
-      onPaid({ order: shown, offline, method, total, tendered: cash ? tendered : null, change: cash ? change : 0 });
+      onPaid({ order: shown, offline, method: mode, total, tendered, change, ...(mixed ? { cardAmount: cardPart } : {}) });
     },
     onError: async (error: Error & { response?: { status?: number; data?: { error?: string } } }) => {
       if (error instanceof OfflineRefused) {
@@ -155,7 +178,7 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
     },
   });
 
-  const canConfirm = !checkout.isPending && !short;
+  const canConfirm = !checkout.isPending && !short && splitOk;
   const confirm = useCallback(() => {
     if (canConfirm) checkout.mutate();
   }, [canConfirm, checkout]);
@@ -179,131 +202,161 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (cash && /^\d$/.test(e.key)) press(e.key);
-      else if (cash && (e.key === "," || e.key === ".")) press(",");
-      else if (cash && e.key === "Backspace") setText((c) => c.slice(0, -1));
+      if (typing && /^\d$/.test(e.key)) press(e.key);
+      else if (typing && (e.key === "," || e.key === ".")) press(",");
+      else if (typing && e.key === "Backspace") setText((c) => c.slice(0, -1));
       else if (e.key === "Enter") confirm();
-      else if (e.key === "Escape") onClose();
+      else if (e.key === "Escape" && !checkout.isPending) onClose();
       else return;
       e.preventDefault();
       e.stopPropagation();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [cash, press, confirm, onClose]);
+  }, [typing, press, confirm, onClose, checkout.isPending]);
 
   const suggestions = useMemo(() => (cash ? cashSuggestions(total, fractionDigits) : []), [cash, total, fractionDigits]);
-  const Icon = METHODS[method].icon;
+  const { label, icon: Icon } = PAY_MODES[mode];
   const totalParts = parts(total);
+  const amount = (value: number, placeholder = false) => {
+    const p = parts(value);
+    return (
+      <div className={`v tab${placeholder ? " ph" : ""}`}>
+        {!p.suffix && <small style={{ marginLeft: 0, marginRight: 6 }}>{p.symbol}</small>}
+        {p.figure}
+        {p.suffix && <small>{p.symbol}</small>}
+      </div>
+    );
+  };
+
+  const keypad = (
+    <div className="sh-kp">
+      {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((k) => (
+        <button key={k} onClick={() => press(k)}>
+          {k}
+        </button>
+      ))}
+      <button onClick={() => press(fractionDigits === 0 ? "00" : ",")}>{fractionDigits === 0 ? "00" : ","}</button>
+      <button onClick={() => press("0")}>0</button>
+      <button onClick={() => setText((c) => c.slice(0, -1))} aria-label="Стереть">
+        <Delete className="i" />
+      </button>
+    </div>
+  );
+
+  const okLabel = cash
+    ? short
+      ? `Не хватает ${money(total - (tendered ?? 0))}`
+      : "Оплатить"
+    : mixed
+      ? splitOk
+        ? `Оплатить · ${money(cardPart)} + ${money(cashPart)}`
+        : "Введите сумму картой"
+      : `Оплачено · ${money(total)}`;
 
   return (
-    <div className="sh-scrim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && !checkout.isPending && onClose()}>
-      <div className="sh-modal" role="dialog" aria-label={`Оплата: ${METHODS[method].label}`}>
-        <div className="sh-mh">
-          <div className="emo">
-            <Icon className="i" />
-          </div>
-          <div>
-            <h3>{METHODS[method].label}</h3>
-            <p>{offlineNow && cash ? "Нет связи — чек сохранится на кассе и уйдёт на сервер сам" : "Оплата чека"}</p>
-          </div>
-          <button className="sh-ic" onClick={onClose} aria-label="Закрыть" disabled={checkout.isPending}>
-            <X className="i" />
-          </button>
-        </div>
-
-        <div className="sh-pm-total">
-          <div className="lbl">К оплате</div>
-          <div className="v tab">
-            {!totalParts.suffix && <small style={{ marginLeft: 0, marginRight: 8 }}>{totalParts.symbol}</small>}
-            {totalParts.figure}
-            {totalParts.suffix && <small>{totalParts.symbol}</small>}
-          </div>
-        </div>
-
-        {cash ? (
-          <>
-            <div className="sh-pm-tender">
-              <div className="row">
-                <span className="lbl">Получено</span>
-                <span className={`v tab${text === "" ? " ph" : ""}`}>
-                  {parts(text ? parseDecimal(text) : total).figure}
-                  <small style={{ fontWeight: 500, fontSize: 18, marginLeft: 8, color: "var(--muted)" }}>{totalParts.symbol}</small>
-                </span>
-              </div>
-              <div className={`sh-pm-change${short ? " short" : ""}`}>
-                <span>{short ? "Не хватает" : "Сдача"}</span>
-                <b className="tab">{short ? money(total - (tendered ?? 0)) : money(change)}</b>
-              </div>
-            </div>
-
-            <div className="sh-mb" style={{ gridTemplateColumns: "1fr 190px" }}>
-              <div className="sh-kp">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((k) => (
-                  <button key={k} onClick={() => press(k)}>
-                    {k}
-                  </button>
-                ))}
-                <button onClick={() => press(fractionDigits === 0 ? "00" : ",")}>{fractionDigits === 0 ? "00" : ","}</button>
-                <button onClick={() => press("0")}>0</button>
-                <button onClick={() => setText((c) => c.slice(0, -1))} aria-label="Стереть">
-                  <Delete className="i" />
-                </button>
-              </div>
-              <div className="sh-qw">
-                <div className="lbl">Клиент даёт</div>
-                <button className={`tab${text === "" ? " on" : ""}`} onClick={() => setText("")}>
-                  Ровно
-                </button>
-                {suggestions.map((sum) => (
-                  <button key={sum} className="tab" onClick={() => setText(String(sum).replace(".", ","))}>
-                    {money(sum)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="sh-pm-note">
-            <div className="sh-pm-icon">
-              <Icon className="i" />
-            </div>
-            {method === "card" ? (
-              <>
-                Проведите оплату на <b>банковском терминале</b>.
-                <br />
-                Когда терминал напечатает чек об успешной оплате — подтвердите здесь.
-              </>
-            ) : (
-              <>
-                Клиент оплачивает по <b>QR-коду</b> в приложении банка.
-                <br />
-                Когда деньги пришли — подтвердите здесь.
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="sh-ma">
-          <button className="cancel" onClick={onClose} disabled={checkout.isPending}>
-            Отмена
-          </button>
-          <button className="ok" onClick={confirm} disabled={!canConfirm}>
-            {checkout.isPending ? (
-              <>
-                <span className="sh-spin" /> Проводим…
-              </>
-            ) : (
-              <>
-                <Check className="i" />
-                {cash ? "Принять оплату" : "Оплата получена"}
-                {" · "}
-                <span className="tab">{money(total)}</span>
-              </>
-            )}
-          </button>
-        </div>
+    <aside className="sh-side sh-pp" aria-label={`Оплата: ${label}`}>
+      <div className="sh-pp-head">
+        <button className="sh-pp-back" onClick={onClose} disabled={checkout.isPending}>
+          <ArrowLeft className="i" />
+          Способ оплаты
+        </button>
+        <span className="m">
+          <Icon className="i" />
+          {label}
+        </span>
       </div>
-    </div>
+
+      <div className="sh-pp-total">
+        <span className="lbl">К оплате</span>
+        <span className="v tab">
+          {!totalParts.suffix && <small style={{ marginLeft: 0, marginRight: 6 }}>{totalParts.symbol}</small>}
+          {totalParts.figure}
+          {totalParts.suffix && <small>{totalParts.symbol}</small>}
+        </span>
+      </div>
+
+      {cash && (
+        <>
+          {offlineNow && <div className="sh-pp-note">Нет связи — чек сохранится на кассе и уйдёт на сервер сам</div>}
+          <div className="sh-pp-box act">
+            <div className="lbl">Клиент дал</div>
+            {amount(tendered ?? total, tendered === null)}
+          </div>
+          <div className={`sh-pp-box ${short ? "short" : "chg"}`}>
+            <div className="lbl">{short ? "Не хватает" : "Сдача"}</div>
+            {amount(short ? total - (tendered ?? 0) : change)}
+          </div>
+          {keypad}
+          <div className="sh-pp-quick">
+            <button className={text === "" ? "on" : ""} onClick={() => setText("")}>
+              Без сдачи
+            </button>
+            {suggestions.map((sum) => (
+              <button key={sum} className={`tab${tendered === sum ? " on" : ""}`} onClick={() => setText(String(sum).replace(".", ","))}>
+                {parts(sum).figure}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {mode === "card" && (
+        <div className="sh-pp-card">
+          <CreditCard className="i" />
+          <div>
+            Проведите <b>{money(total)}</b> на банковском терминале
+            <br />
+            или примите <b>перевод на карту</b>.
+          </div>
+          <small>Когда деньги пришли — нажмите «Оплачено».</small>
+        </div>
+      )}
+
+      {mode === "qr" && (
+        <div className="sh-pp-card">
+          <QrCode className="i" />
+          <div>
+            Клиент оплачивает по <b>QR-коду</b> в приложении банка.
+          </div>
+          <small>Когда деньги пришли — нажмите «Оплачено».</small>
+        </div>
+      )}
+
+      {mixed && (
+        <>
+          <div className="sh-pp-box act">
+            <div className="lbl">
+              <CreditCard className="i" />
+              Картой
+            </div>
+            {amount(cardPart, text === "")}
+          </div>
+          <div className="sh-pp-box">
+            <div className="lbl">
+              <Banknote className="i" />
+              Наличными — остаток, считается сам
+            </div>
+            {amount(Math.max(0, cashPart))}
+          </div>
+          {keypad}
+        </>
+      )}
+
+      <div className="sh-pay">
+        <button className="sh-pp-ok" onClick={confirm} disabled={!canConfirm}>
+          {checkout.isPending ? (
+            <>
+              <span className="sh-spin" /> Проводим…
+            </>
+          ) : (
+            <>
+              {canConfirm && <Check className="i" />}
+              {okLabel}
+            </>
+          )}
+        </button>
+      </div>
+    </aside>
   );
 }

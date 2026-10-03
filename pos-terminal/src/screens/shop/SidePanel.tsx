@@ -1,6 +1,6 @@
-import { Banknote, CornerDownLeft, CreditCard, Delete, QrCode, User, X } from "lucide-react";
-import type { PaymentMethod } from "../../types";
+import { Banknote, CornerDownLeft, CreditCard, Delete, QrCode, User, WalletCards, X } from "lucide-react";
 import { QR_ENABLED } from "./shopProduct";
+import type { PayMode } from "./ShopPayment";
 
 interface SidePanelProps {
   total: number;
@@ -15,7 +15,7 @@ interface SidePanelProps {
   onMultiply: () => void;
   onEnter: () => void;
   onCustomer: () => void;
-  onPay: (method: PaymentMethod) => void;
+  onPay: (method: PayMode) => void;
   canPay: boolean;
   /** Нет связи: картой и по QR не платят, только наличными (офлайн-режим). */
   offline?: boolean;
@@ -113,11 +113,15 @@ export default function SidePanel(props: SidePanelProps) {
             Карта
             <span className="sh-fk">F9</span>
           </button>
+          <button className="sh-alt" onClick={() => onPay("mixed")} disabled={!canPay || offline} title={offline ? "Без связи — только наличные" : undefined}>
+            <WalletCards className="i" />
+            Карта + нал.
+            <span className="sh-fk">F10</span>
+          </button>
           {QR_ENABLED && (
             <button className="sh-alt" onClick={() => onPay("qr")} disabled={!canPay || offline} title={offline ? "Без связи — только наличные" : undefined}>
               <QrCode className="i" />
               QR
-              <span className="sh-fk">F10</span>
             </button>
           )}
         </div>
