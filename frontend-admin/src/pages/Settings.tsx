@@ -27,7 +27,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
 
   // General settings
-  const [form, setForm] = useState({ name: "", businessType: "cafe", phone: "", email: "", address: "", timezone: "UTC", currency: "USD", taxRate: 0, defaultMarkupPercent: 0 });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", timezone: "UTC", currency: "USD", taxRate: 0, defaultMarkupPercent: 0 });
 
   // Product settings
   const [units, setUnits] = useState<Unit[]>(DEFAULT_UNITS);
@@ -43,7 +43,7 @@ export default function Settings() {
     if (settings) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- заполнение формы из ответа сервера
       setCatalogSharing(settings.catalogSharing !== false);
-      setForm({ name: settings.name || "", businessType: settings.businessType || "cafe", phone: settings.phone || "", email: settings.email || "", address: settings.address || "", timezone: settings.timezone || "UTC", currency: settings.currency || "USD", taxRate: Number(settings.taxRate) || 0, defaultMarkupPercent: Number(settings.defaultMarkupPercent) || 0 });
+      setForm({ name: settings.name || "", phone: settings.phone || "", email: settings.email || "", address: settings.address || "", timezone: settings.timezone || "UTC", currency: settings.currency || "USD", taxRate: Number(settings.taxRate) || 0, defaultMarkupPercent: Number(settings.defaultMarkupPercent) || 0 });
       try {
         const parsed = JSON.parse(settings.settings || "{}");
         if (parsed.units && Array.isArray(parsed.units) && parsed.units.length > 0) {
@@ -117,28 +117,6 @@ export default function Settings() {
 
       {activeTab === "general" && (
         <form onSubmit={handleSaveGeneral} className="space-y-6">
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900">Тип заведения</h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {([
-                { key: "retail", title: "Магазин", text: "Сканер штрихкодов, весовой товар, быстрые кнопки, чек без столов" },
-                { key: "cafe", title: "Кафе или ресторан", text: "Зал, столы, заказы навынос, кухня" },
-              ] as const).map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setForm({ ...form, businessType: option.key })}
-                  className={`rounded-lg border-2 p-4 text-left transition-colors ${
-                    form.businessType === option.key ? "border-primary-600 bg-primary-50" : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <span className="block text-sm font-semibold text-gray-900">{option.title}</span>
-                  <span className="mt-1 block text-xs text-gray-500">{option.text}</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500">От типа зависит, как выглядит касса. Сохраните настройки, а на кассе обновите страницу.</p>
-          </div>
           {settings?.slug && (
             <div className="card space-y-3">
               <h2 className="text-lg font-semibold text-gray-900">Касса</h2>

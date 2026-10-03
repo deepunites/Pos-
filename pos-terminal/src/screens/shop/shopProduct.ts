@@ -49,3 +49,10 @@ export function stockState(p: Product): StockState {
   if (Number(p.minStock) > 0 && Number(p.currentStock) <= Number(p.minStock)) return "low";
   return "ok";
 }
+
+/**
+ * QR на кассе магазина скрыт до доработки (решение владельца, 2026-10-03):
+ * кнопки нет, F10 ничего не делает. Оплата по QR в коде остаётся — вернуть её
+ * значит поставить здесь true.
+ */
+export const QR_ENABLED: boolean = false;

@@ -30,6 +30,7 @@ import { useMoney } from "../hooks/useMoney";
 import { apiErrorMessage } from "../utils/apiError";
 import type { Category, Product, CashShift, Table } from "../types";
 import StockReceiptScreen from "./StockReceiptScreen";
+import { UZ_PREFIX, formatLocal, fullPhone, localDigits } from "../utils/phone";
 
 interface MenuScreenProps {
   user: { firstName: string; lastName: string; email: string; role: string };
@@ -241,7 +242,12 @@ export default function MenuScreen({ user, onLogout, onCheckout, onCloseShift }:
   };
 
   const handleSaveCustomer = () => {
-    setCustomer(customerName || undefined, customerPhone || undefined);
+    const phone = fullPhone(customerPhone);
+    if (phone === null) {
+      toast.error("Допишите номер: после +998 нужно 9 цифр");
+      return;
+    }
+    setCustomer(customerName || undefined, phone);
     setShowCustomerInput(false);
     if (customerName) toast.success(`Клиент: ${customerName}`);
   };
@@ -433,13 +439,17 @@ export default function MenuScreen({ user, onLogout, onCheckout, onCloseShift }:
               </div>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dark-400" />
+                {/* +998 касса ставит сама — набирают девять цифр */}
+                <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 text-sm text-dark-400">{UZ_PREFIX}</span>
                 <input
                   type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="Телефон"
-                  aria-label="Телефон клиента"
-                  className="w-full rounded border-2 border-dark-600 bg-dark-700 py-3 pl-10 pr-4 text-sm text-dark-50 placeholder:text-dark-500 focus:border-primary-500 focus:outline-none"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={formatLocal(customerPhone)}
+                  onChange={(e) => setCustomerPhone(localDigits(e.target.value))}
+                  placeholder="90 123-45-67"
+                  aria-label="Телефон клиента, после +998"
+                  className="w-full rounded border-2 border-dark-600 bg-dark-700 py-3 pl-20 pr-4 text-sm text-dark-50 placeholder:text-dark-500 focus:border-primary-500 focus:outline-none"
                 />
               </div>
             </div>

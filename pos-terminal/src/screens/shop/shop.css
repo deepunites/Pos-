@@ -328,6 +328,12 @@
 .sh-field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 7px; }
 .sh-field input { display: block; width: 100%; height: 50px; padding: 0 14px; font: inherit; font-size: 17px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 4px; outline: 0; }
 .sh-field input:focus { border-color: var(--accent); }
+/* Телефон: +998 стоит сам, слева от поля, кассир набирает девять цифр. */
+.sh-phone { display: flex; }
+.sh-phone b { display: flex; align-items: center; flex: none; padding: 0 14px; font-size: 17px; font-weight: 500; color: var(--muted); background: var(--paper); border: 1px solid var(--line); border-right: 0; border-radius: 4px 0 0 4px; }
+.sh-field .sh-phone input { flex: 1; min-width: 0; border-radius: 0 4px 4px 0; letter-spacing: 0.02em; }
+.sh-phone:focus-within b { border-color: var(--accent); }
+.sh-field-err { display: block; margin-top: 6px; font-size: 13px; font-style: normal; color: var(--red); }
 .sh-loading { flex: 1; display: flex; align-items: center; justify-content: center; }
 .sh-spin { width: 18px; height: 18px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
