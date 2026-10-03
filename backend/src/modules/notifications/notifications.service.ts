@@ -1,8 +1,11 @@
 import prisma from "../../config/database.js";
+import { formatMoney } from "../../utils/money.js";
+import { formatStock, orderStatusLabel, tenantUnits } from "./notifications.format.js";
 
 export const notificationsService = {
   async getNotifications(tenantId: string) {
-    const [recentOrders, lowStockProducts] = await Promise.all([
+    const [tenant, recentOrders, lowStockProducts] = await Promise.all([
+      prisma.tenant.findUnique({ where: { id: tenantId }, select: { currency: true, settings: true } }),
       prisma.order.findMany({
         where: { tenantId },
         orderBy: { createdAt: "desc" },
@@ -28,17 +31,21 @@ export const notificationsService = {
           id: true,
           name: true,
           currentStock: true,
+          unit: true,
+          saleUnit: true,
           sku: true,
         },
       }),
     ]);
+
+    const units = tenantUnits(tenant?.settings);
 
     const notifications = [
       ...recentOrders.map((o) => ({
         id: `order-${o.id}`,
         type: "order" as const,
         title: `Заказ №${o.orderNumber}`,
-        message: `Статус: ${o.status}, сумма: ${Number(o.total).toFixed(2)} ₽`,
+        message: `Статус: ${orderStatusLabel(o.status)}, сумма: ${formatMoney(o.total, tenant?.currency)}`,
         read: false,
         createdAt: o.createdAt,
       })),
@@ -46,7 +53,7 @@ export const notificationsService = {
         id: `stock-${p.id}`,
         type: "stock" as const,
         title: `Низкий остаток: ${p.name}`,
-        message: `Осталось ${p.currentStock} шт. (SKU: ${p.sku})`,
+        message: `Осталось ${formatStock(p, units)}${p.sku ? ` (SKU: ${p.sku})` : ""}`,
         read: false,
         createdAt: new Date(),
       })),
