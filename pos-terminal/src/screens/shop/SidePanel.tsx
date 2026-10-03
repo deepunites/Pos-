@@ -1,4 +1,4 @@
-import { Banknote, CornerDownLeft, CreditCard, Delete, QrCode, User, WalletCards, X } from "lucide-react";
+import { Banknote, CornerDownLeft, CreditCard, Delete, NotebookPen, QrCode, User, WalletCards, X } from "lucide-react";
 import { QR_ENABLED } from "./shopProduct";
 import type { PayMode } from "./ShopPayment";
 
@@ -98,6 +98,11 @@ export default function SidePanel(props: SidePanelProps) {
         <button className={customerName ? "set" : ""} onClick={onCustomer}>
           <User className="i" />
           {customerName ? customerName : "Клиент"}
+        </button>
+        <button className="sh-debt" onClick={() => onPay("debt")} disabled={!canPay || offline} title={offline ? "Без связи в долг не записать" : "В долг клиенту"}>
+          <NotebookPen className="i" />
+          В долг
+          <span className="sh-fk">F11</span>
         </button>
       </div>
 

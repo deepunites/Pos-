@@ -371,6 +371,56 @@
 .sh-pp-ok:hover:not(:disabled) { background: var(--pay-hi); }
 .sh-pp-ok:disabled { opacity: 0.45; }
 .sh-pp-ok .i { width: 24px; height: 24px; }
+
+/* «В долг» и клиенты: жёлтый — долг, зелёный — деньги. */
+.sh-two .sh-debt { border-color: var(--amber); background: var(--amber-soft); color: var(--amber-ink); }
+.sh-two .sh-debt .i { color: var(--amber-ink); }
+.sh-two .sh-debt:hover:not(:disabled) { border-color: var(--amber-ink); }
+.sh-two .sh-debt:disabled { opacity: 0.4; }
+.sh-two .sh-debt .sh-fk { margin-left: 4px; }
+.sh-pp-box.debt { border-color: var(--amber); background: var(--amber-soft); }
+.sh-pp-box.debt .v { color: var(--amber-ink); }
+.sh-pp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: none; }
+.sh-pp-two .v { font-size: 30px; }
+.sh-pp-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; }
+.sh-pp-seg button { height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); font-weight: 600; font-size: 15px; }
+.sh-pp-seg button.on { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
+.sh-pp-seg .i { width: 18px; height: 18px; }
+
+.sh-cu { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.sh-pp .sh-cu { flex: 1; }
+.sh-cu-search { position: relative; display: block; flex: none; }
+.sh-cu-search .i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; color: var(--muted); }
+.sh-cu-search input { width: 100%; height: 50px; padding: 0 14px 0 44px; font: inherit; font-size: 18px; color: var(--ink); background: var(--card); border: 2px solid var(--accent); border-radius: 4px; outline: 0; }
+.sh-cu-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.sh-modal .sh-cu-list { max-height: 46vh; }
+.sh-cu-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; text-align: left; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--ink); }
+.sh-cu-row:hover:not(:disabled) { border-color: var(--accent); }
+.sh-cu-row.off { opacity: 0.5; }
+.sh-cu-row .t, .sh-cu-chosen .t { flex: 1; min-width: 0; }
+.sh-cu-row .t b, .sh-cu-chosen .t b { display: block; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-cu-row .t > span, .sh-cu-chosen .t > span { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.sh-cu-row .d, .sh-cu-chosen .d { flex: none; text-align: right; }
+.sh-cu-row .d small, .sh-cu-chosen .d small { display: block; color: var(--muted); font-size: 11.5px; }
+.sh-cu-row .d b, .sh-cu-chosen .d b { display: block; font-weight: 600; font-size: 15px; color: var(--amber-ink); }
+.sh-cu-row .d b.blocked { color: var(--red); }
+.sh-cu-row .d .sh-cu-tag { margin-top: 3px; }
+.sh-cu-av { width: 36px; height: 36px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 13px; }
+.sh-cu-av.warn { background: var(--amber); }
+.sh-cu-av.blocked { background: var(--red); }
+.sh-cu-stars { font-style: normal; color: var(--amber); letter-spacing: 1px; }
+.sh-cu-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.sh-cu-tag.ok { background: var(--accent-soft); color: var(--accent-hi); }
+.sh-cu-tag.warn { background: var(--amber-soft); color: var(--amber-ink); }
+.sh-cu-tag.blocked { background: var(--red-soft); color: var(--red); }
+.sh-cu-empty { padding: 18px 8px; text-align: center; color: var(--muted); font-size: 14px; }
+.sh-cu-add { flex: none; height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--accent); border-radius: 4px; color: var(--accent); font-weight: 600; font-size: 15px; }
+.sh-cu-add .i { width: 18px; height: 18px; }
+.sh-cu-chosen { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 2px solid var(--accent); border-radius: 4px; background: var(--accent-soft); }
+.sh-cu-x { width: 32px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--muted); }
+.sh-cu-x:hover { color: var(--ink); background: var(--card); }
+.sh-cu-x .i { width: 18px; height: 18px; }
+.sh-cu-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .sh-loading { flex: 1; display: flex; align-items: center; justify-content: center; }
 .sh-spin { width: 18px; height: 18px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

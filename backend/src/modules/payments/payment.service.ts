@@ -8,6 +8,7 @@ import { AppError, ConflictError, NotFoundError } from "../../utils/errors.js";
 import { inTransaction } from "../../utils/transaction.js";
 import { attachIdempotencyResource, claimIdempotencyKey, type IdempotencyContext } from "../../utils/idempotency.js";
 import { lockOrder } from "../orders/order.locks.js";
+import { refundDebt } from "../customers/customer.service.js";
 
 export class PaymentService {
   async create(tenantId: string, data: CreatePaymentInput, userId?: string, idem?: IdempotencyContext | null) {
@@ -133,6 +134,17 @@ export class PaymentService {
           }),
         },
       });
+
+      // Возврат части «в долг»: денег не было, поэтому уменьшается долг клиента.
+      if (payment.method === "debt" && payment.order.customerId) {
+        await refundDebt(tx, {
+          tenantId,
+          customerId: payment.order.customerId,
+          orderId: payment.orderId,
+          amount: payment.amount,
+          note: reason,
+        });
+      }
 
       const order = payment.order;
       const otherCompletedPayments = order.payments.filter(

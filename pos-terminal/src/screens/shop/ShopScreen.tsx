@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, LogOut, Moon, PackagePlus, PauseCircle, Sun, Volume2, VolumeX } from "lucide-react";
+import { HandCoins, Lock, LogOut, Moon, PackagePlus, PauseCircle, Sun, Volume2, VolumeX } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import { ConnectionDot } from "../../components/ConnectionStatus";
@@ -27,6 +27,7 @@ import Receipt from "./Receipt";
 import SaleDone from "./SaleDone";
 import ScanBar from "./ScanBar";
 import ShopPayment, { type PayMode, type SaleResult } from "./ShopPayment";
+import DebtsModal from "./DebtsModal";
 import SidePanel from "./SidePanel";
 import TileCatalog, { type TileFilter } from "./TileCatalog";
 import { CustomerModal, ParkedModal } from "./Modals";
@@ -96,6 +97,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   const [showParked, setShowParked] = useState(false);
   const [showCustomer, setShowCustomer] = useState(false);
   const [showReceiptIn, setShowReceiptIn] = useState(false);
+  const [showDebts, setShowDebts] = useState(false);
   // A scanned code the shop does not have yet, offered to the manager as a new product.
   const [newProduct, setNewProduct] = useState<{ code: string; hit: CatalogHit | null; multiplier: number | null } | null>(null);
 
@@ -103,7 +105,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   const products = useRef(new Map<string, Product>()); // what the terminal has seen of each product (stock, price)
   const lookups = useRef(new Map<string, { at: number; product: Product | null }>());
 
-  const modalOpen = Boolean(weightFor || qtyFor || payMethod || sale || showParked || showCustomer || showReceiptIn || newProduct);
+  const modalOpen = Boolean(weightFor || qtyFor || payMethod || sale || showParked || showCustomer || showReceiptIn || showDebts || newProduct);
   const canAddProducts = user.role === "admin" || user.role === "manager";
   const total = getTotal();
 
@@ -490,7 +492,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         return;
       }
       if (method !== "cash" && offlineNow()) {
-        fail("Без связи — только наличные: картой оплатить нельзя");
+        fail(method === "debt" ? "Без связи в долг не записать — только наличные" : "Без связи — только наличные: картой оплатить нельзя");
         return;
       }
       setPayMethod(method);
@@ -522,9 +524,9 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
     const onKey = (e: KeyboardEvent) => {
       const s = live.current;
 
-      // While paying, F8–F10 switch the method rather than open a second one.
+      // While paying, F8–F11 switch the method rather than open a second one.
       // QR (когда его вернут) — без своей клавиши: F10 теперь «Карта + наличные».
-      const byKey: Record<string, PayMode> = { F8: "cash", F9: "card", F10: "mixed" };
+      const byKey: Record<string, PayMode> = { F8: "cash", F9: "card", F10: "mixed", F11: "debt" };
       if (s.payMethod && byKey[e.key]) {
         e.preventDefault();
         setPayMethod(byKey[e.key]);
@@ -642,6 +644,10 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         <button className="sh-chip" onClick={() => setShowReceiptIn(true)} title="Оформить приход товара">
           <PackagePlus className="i" />
           Приход
+        </button>
+        <button className="sh-chip" onClick={() => setShowDebts(true)} title="Клиент гасит долг">
+          <HandCoins className="i" />
+          Долги
         </button>
         <span className="sh-vr" />
         <button className="sh-chip" onClick={onCloseShift} title="Закрыть смену">
@@ -847,6 +853,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         />
       )}
       {showReceiptIn && <StockReceiptScreen onClose={() => setShowReceiptIn(false)} />}
+      {showDebts && <DebtsModal shiftId={shift.id} onClose={() => setShowDebts(false)} />}
       {newProduct && (
         <CatalogAdd
           code={newProduct.code}
