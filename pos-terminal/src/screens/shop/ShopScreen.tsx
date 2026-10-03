@@ -30,7 +30,7 @@ import ShopPayment, { type SaleResult } from "./ShopPayment";
 import SidePanel from "./SidePanel";
 import TileCatalog, { type TileFilter } from "./TileCatalog";
 import { CustomerModal, ParkedModal } from "./Modals";
-import { emojiFor, formatQty, productTitle, shelfPrice, stockLeft, weightUnit } from "./shopProduct";
+import { QR_ENABLED, emojiFor, formatQty, productTitle, shelfPrice, stockLeft, weightUnit } from "./shopProduct";
 
 interface ShopScreenProps {
   user: { firstName: string; lastName: string; email: string; role: string };
@@ -523,7 +523,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       const s = live.current;
 
       // While paying, F8–F10 switch the method rather than open a second window.
-      const byKey: Record<string, PaymentMethod> = { F8: "cash", F9: "card", F10: "qr" };
+      const byKey: Record<string, PaymentMethod> = { F8: "cash", F9: "card", ...(QR_ENABLED ? { F10: "qr" as const } : {}) };
       if (s.payMethod && byKey[e.key]) {
         e.preventDefault();
         setPayMethod(byKey[e.key]);
