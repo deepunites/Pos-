@@ -242,15 +242,13 @@ describe("Retail: weighted goods, lookup, search, business type", () => {
   // ── тип заведения ───────────────────────────────────────────────────────
 
   describe("business type", () => {
-    it("is changed from the settings, and only to a known value", async () => {
-      const ok = await api("/settings", adminToken, { method: "PUT", body: JSON.stringify({ businessType: "cafe" }) });
-      expect(ok.status).toBe(200);
-      expect(((await ok.json()) as any).data.businessType).toBe("cafe");
-
-      const bad = await api("/settings", adminToken, { method: "PUT", body: JSON.stringify({ businessType: "casino" }) });
-      expect(bad.status).toBe(400);
-
-      await api("/settings", adminToken, { method: "PUT", body: JSON.stringify({ businessType: "retail" }) });
+    it("is not changed from the settings: it is chosen at registration only", async () => {
+      // Старые открытые админки ещё присылают businessType при каждом
+      // сохранении «Общих» — сохранение проходит, тип остаётся прежним.
+      const res = await api("/settings", adminToken, { method: "PUT", body: JSON.stringify({ businessType: "cafe", currency: "UZS" }) });
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as any).data.businessType).toBe("retail");
+      expect((await prisma.tenant.findUniqueOrThrow({ where: { id: testTenantId } })).businessType).toBe("retail");
     });
 
     it("is chosen at registration, and the shop code is a readable transliteration", async () => {
