@@ -47,30 +47,52 @@ export class CashShiftService {
     let totalCashSales = 0;
     let totalCardSales = 0;
     let totalQrSales = 0;
+    let totalDebtSales = 0;
     let totalTips = 0;
 
     for (const payment of payments) {
       if (payment.method === "cash") totalCashSales += payment.amount;
       else if (payment.method === "card") totalCardSales += payment.amount;
       else if (payment.method === "qr") totalQrSales += payment.amount;
+      else if (payment.method === "debt") totalDebtSales += payment.amount;
       totalTips += payment.tipAmount;
     }
+
+    // Погашения долгов на этой кассе: наличные лежат в ящике, карта — нет.
+    const repayments = await prisma.customerDebtEntry.findMany({
+      where: { tenantId, cashShiftId: shiftId, type: "repayment" },
+      select: { amount: true, method: true },
+    });
+    const totalDebtRepaidCash = repayments.filter((r) => r.method === "cash").reduce((sum, r) => sum - r.amount, 0);
+    const totalDebtRepaidCard = repayments.filter((r) => r.method === "card").reduce((sum, r) => sum - r.amount, 0);
 
     const refunds = await prisma.payment.findMany({
       where: { tenantId, status: "refunded", order: { cashShiftId: shiftId } },
     });
     const totalRefunds = refunds.reduce((sum, p) => sum + p.amount, 0);
 
-    const totalSales = totalCashSales + totalCardSales + totalQrSales;
+    // Продажа в долг — тоже продажа смены, но денег в ящик она не приносит.
+    const totalSales = totalCashSales + totalCardSales + totalQrSales + totalDebtSales;
     // Возврат не создаёт новой записи, а переводит платёж в «refunded», и тот
     // выпадает из продаж выше. Поэтому в ящике — начальная сумма плюс
     // невозвращённые продажи наличными, и только. Раньше отсюда ещё раз
     // вычиталась сумма всех возвратов: возврат наличных учитывался дважды
     // (ложный излишек при закрытии), а возврат по карте или QR забирал из
     // ящика деньги, которых там никогда не было (ложная недостача).
-    const expectedCash = openingCash + totalCashSales;
+    const expectedCash = openingCash + totalCashSales + totalDebtRepaidCash;
 
-    return { totalSales, totalCashSales, totalCardSales, totalQrSales, totalTips, totalRefunds, expectedCash };
+    return {
+      totalSales,
+      totalCashSales,
+      totalCardSales,
+      totalQrSales,
+      totalDebtSales,
+      totalDebtRepaidCash,
+      totalDebtRepaidCard,
+      totalTips,
+      totalRefunds,
+      expectedCash,
+    };
   }
 
   // A manager or admin can close a shift left open by a cashier who already

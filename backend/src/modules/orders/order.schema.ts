@@ -51,13 +51,16 @@ export const checkoutSchema = createOrderSchema
     payments: z
       .array(
         z.object({
-          method: z.enum(["cash", "card", "qr"]),
+          // debt — в долг клиенту (нужен customerId); остальное — деньги сейчас.
+          method: z.enum(["cash", "card", "qr", "debt"]),
           amount: z.number().positive("Часть оплаты должна быть больше нуля"),
         })
       )
       .min(1)
       .max(3)
       .optional(),
+    // Клиент из списка заведения: у продажи в долг обязателен.
+    customerId: z.string().uuid().optional(),
     // Офлайн-режим кассы: продажа пробита без связи и дошла сюда позже. Деньги
     // уже взяты, поэтому сервер с кассой не спорит: цена — та, по которой
     // продали (unitPrice строки), остатка может не хватить (склад уходит в
@@ -75,6 +78,13 @@ export const checkoutSchema = createOrderSchema
     if (!data.payment === !data.payments) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payment"], message: "Укажите оплату: один способ или части оплаты" });
       return;
+    }
+    const debtParts = data.payments?.filter((p) => p.method === "debt") ?? [];
+    if (debtParts.length > 1) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payments"], message: "Долг — одной частью" });
+    }
+    if (debtParts.length > 0 && !data.customerId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customerId"], message: "Чтобы записать в долг, выберите клиента" });
     }
     if (!data.offline) return;
     const methods = data.payments ? data.payments.map((p) => p.method) : [data.payment!.method];

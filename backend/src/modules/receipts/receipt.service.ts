@@ -25,6 +25,7 @@ const receiptInclude = {
   table: { select: { id: true, number: true } },
   user: { select: { id: true, firstName: true, lastName: true } },
   payments: true,
+  customer: { select: { firstName: true, lastName: true, debtBalance: true } },
 } satisfies Prisma.OrderInclude;
 
 type ReceiptOrder = Prisma.OrderGetPayload<{ include: typeof receiptInclude }>;
@@ -138,6 +139,7 @@ export class ReceiptService {
       qr: "QR",
       online: "Онлайн",
       gift_card: "Подарочная карта",
+      debt: "В долг",
     };
     const paymentMethod = PAYMENT_LABELS[order.payments?.[0]?.method] ?? "Наличные";
 
@@ -311,6 +313,19 @@ export class ReceiptService {
     </div>
     ` : ""}`}
   </div>
+
+  ${order.customer && order.payments?.some((p) => p.method === "debt") ? `
+  <div class="info" style="margin-top: 8px;">
+    <div class="info-row">
+      <span>Клиент:</span>
+      <span>${escapeHtml([order.customer.firstName, order.customer.lastName].filter(Boolean).join(" "))}</span>
+    </div>
+    <div class="info-row">
+      <span>Долг клиента:</span>
+      <span>${money(order.customer.debtBalance)}</span>
+    </div>
+  </div>
+  ` : ""}
 
   <div class="footer">
     <p>Спасибо за покупку!</p>

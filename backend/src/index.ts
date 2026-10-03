@@ -35,6 +35,7 @@ import stockReceiptRoutes from "./api/stock-receipts.routes.js";
 import cashShiftRoutes from "./api/cash-shifts.routes.js";
 import techCardRoutes from "./api/tech-cards.routes.js";
 import catalogRoutes from "./api/catalog.routes.js";
+import customerRoutes from "./api/customers.routes.js";
 import { importSnapshot } from "./modules/catalog/catalog.import.js";
 import { catalogService } from "./modules/catalog/catalog.service.js";
 import { watchNationalCatalogue } from "./modules/catalog/catalog.tasnif.js";
@@ -96,6 +97,7 @@ app.use("/api/stock-receipts", apiLimiter, stockReceiptRoutes);
 app.use("/api/cash-shifts", apiLimiter, cashShiftRoutes);
 app.use("/api/tech-cards", apiLimiter, techCardRoutes);
 app.use("/api/catalog", apiLimiter, catalogRoutes);
+app.use("/api/customers", apiLimiter, customerRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

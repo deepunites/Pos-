@@ -10,78 +10,80 @@ datasource db {
 }
 
 model Tenant {
-  id                   String    @id @default(uuid())
-  name                 String
-  slug                 String    @unique
+  id                    String    @id @default(uuid())
+  name                  String
+  slug                  String    @unique
   // "cafe" — зал, столы, навынос; "retail" — магазин: сканер, вес, чек без столов.
-  businessType         String    @default("cafe") @map("business_type")
-  logoUrl              String?   @map("logo_url")
-  phone                String?
-  email                String?
-  address              String?
-  timezone             String    @default("UTC")
-  currency             String    @default("USD")
-  taxRate              Float     @default(0) @map("tax_rate")
-  defaultMarkupPercent Float     @default(0) @map("default_markup_percent")
+  businessType          String    @default("cafe") @map("business_type")
+  logoUrl               String?   @map("logo_url")
+  phone                 String?
+  email                 String?
+  address               String?
+  timezone              String    @default("UTC")
+  currency              String    @default("USD")
+  taxRate               Float     @default(0) @map("tax_rate")
+  defaultMarkupPercent  Float     @default(0) @map("default_markup_percent")
   // Делится ли магазин с общей базой штрихкодов тем, что вносит сам: штрихкод,
   // название, бренд, объём, полка. Цены и остатки не уходят никогда.
-  catalogSharing       Boolean   @default(true) @map("catalog_sharing")
-  subscriptionPlan     String    @default("free") @map("subscription_plan")
+  catalogSharing        Boolean   @default(true) @map("catalog_sharing")
+  subscriptionPlan      String    @default("free") @map("subscription_plan")
   subscriptionExpiresAt DateTime? @map("subscription_expires_at")
-  settings             String    @default("{}")
-  isActive             Boolean   @default(true) @map("is_active")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  settings              String    @default("{}")
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  users        User[]
-  branches     Branch[]
-  categories   Category[]
-  products     Product[]
-  orders       Order[]
-  orderCounter OrderCounter?
-  idempotencyKeys IdempotencyKey[]
-  payments     Payment[]
-  inventory    InventoryMovement[]
-  tables       Table[]
-  reservations Reservation[]
-  receipts     Receipt[]
-  stockReceipts StockReceipt[]
-  cashShifts   CashShift[]
-  auditLogs    AuditLog[]
-  notifications Notification[]
-  techCards    TechCard[]
+  users               User[]
+  branches            Branch[]
+  categories          Category[]
+  products            Product[]
+  orders              Order[]
+  orderCounter        OrderCounter?
+  idempotencyKeys     IdempotencyKey[]
+  payments            Payment[]
+  inventory           InventoryMovement[]
+  tables              Table[]
+  reservations        Reservation[]
+  receipts            Receipt[]
+  stockReceipts       StockReceipt[]
+  cashShifts          CashShift[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  techCards           TechCard[]
+  customers           Customer[]
+  customerDebtEntries CustomerDebtEntry[]
 
   @@map("tenants")
 }
 
 model User {
-  id            String    @id @default(uuid())
-  tenantId      String    @map("tenant_id")
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  email         String
-  passwordHash  String    @map("password_hash")
-  firstName     String    @map("first_name")
-  lastName      String    @map("last_name")
-  phone         String?
-  pin           String?
-  role          String    @default("cashier")
-  avatarUrl     String?   @map("avatar_url")
-  isActive      Boolean   @default(true) @map("is_active")
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String    @map("password_hash")
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  phone        String?
+  pin          String?
+  role         String    @default("cashier")
+  avatarUrl    String?   @map("avatar_url")
+  isActive     Boolean   @default(true) @map("is_active")
   // Счётчик для отзыва refresh-токенов: он пишется в токен обновления и
   // сверяется при каждом обновлении. Смена пароля увеличивает счётчик, и все
   // выданные ранее refresh-токены перестают работать. Без этого украденный
   // токен жил свои семь дней, а смена пароля его не отменяла.
-  tokenVersion  Int       @default(0) @map("token_version")
-  lastLoginAt   DateTime? @map("last_login_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  tokenVersion Int       @default(0) @map("token_version")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  orders         Order[]
-  auditLogs      AuditLog[]
-  notifications  Notification[]
-  inventory      InventoryMovement[]
-  stockReceipts  StockReceipt[]
-  cashShifts     CashShift[]
+  orders        Order[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  inventory     InventoryMovement[]
+  stockReceipts StockReceipt[]
+  cashShifts    CashShift[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -99,30 +101,30 @@ model Branch {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  orders      Order[]
-  tables      Table[]
+  orders       Order[]
+  tables       Table[]
   reservations Reservation[]
 
   @@map("branches")
 }
 
 model Category {
-  id          String     @id @default(uuid())
-  tenantId    String     @map("tenant_id")
-  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parentId    String?    @map("parent_id")
-  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children    Category[] @relation("CategoryTree")
-  name        String
-  description String?
-  imageUrl    String?    @map("image_url")
-  color       String?
-  sortOrder    Int        @default(0) @map("sort_order")
-  isIngredient Boolean    @default(false) @map("is_ingredient")
-  markupPercent Float     @default(0) @map("markup_percent")
-  isActive     Boolean    @default(true) @map("is_active")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  id            String     @id @default(uuid())
+  tenantId      String     @map("tenant_id")
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parentId      String?    @map("parent_id")
+  parent        Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children      Category[] @relation("CategoryTree")
+  name          String
+  description   String?
+  imageUrl      String?    @map("image_url")
+  color         String?
+  sortOrder     Int        @default(0) @map("sort_order")
+  isIngredient  Boolean    @default(false) @map("is_ingredient")
+  markupPercent Float      @default(0) @map("markup_percent")
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
 
   products Product[]
 
@@ -148,45 +150,45 @@ model TechCard {
 }
 
 model Product {
-  id            String   @id @default(uuid())
-  tenantId      String   @map("tenant_id")
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  categoryId    String?  @map("category_id")
-  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  techCardId    String?  @map("tech_card_id")
-  techCardRef   TechCard? @relation(fields: [techCardId], references: [id], onDelete: SetNull)
-  name          String
-  description   String?
-  volume        String?
-  sku           String?
-  barcode       String?
-  imageUrl      String?  @map("image_url")
-  price         Float    @default(0)
-  costPrice     Float    @default(0) @map("cost_price")
-  compareAtPrice Float?  @map("compare_at_price")
-  taxRate       Float    @default(0) @map("tax_rate")
-  unit          String   @default("piece")
-  purchaseUnit  String?  @map("purchase_unit")
-  saleUnit      String?  @map("sale_unit")
-  conversionFactor Float? @map("conversion_factor")
-  minStock      Float    @default(0) @map("min_stock")
-  currentStock  Float    @default(0) @map("current_stock")
-  trackInventory Boolean @default(false) @map("track_inventory")
-  isIngredient    Boolean  @default(false) @map("is_ingredient")
-  techCard        String   @default("[]") @map("tech_card")
-  preparationArea String?  @map("preparation_area")
-  cookingMethod   String?  @map("cooking_method")
-  noDiscounts     Boolean  @default(false) @map("no_discounts")
-  isActive        Boolean  @default(true) @map("is_active")
-  sortOrder     Int      @default(0) @map("sort_order")
-  tags          String   @default("[]")
-  metadata      String   @default("{}")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId       String?   @map("category_id")
+  category         Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  techCardId       String?   @map("tech_card_id")
+  techCardRef      TechCard? @relation(fields: [techCardId], references: [id], onDelete: SetNull)
+  name             String
+  description      String?
+  volume           String?
+  sku              String?
+  barcode          String?
+  imageUrl         String?   @map("image_url")
+  price            Float     @default(0)
+  costPrice        Float     @default(0) @map("cost_price")
+  compareAtPrice   Float?    @map("compare_at_price")
+  taxRate          Float     @default(0) @map("tax_rate")
+  unit             String    @default("piece")
+  purchaseUnit     String?   @map("purchase_unit")
+  saleUnit         String?   @map("sale_unit")
+  conversionFactor Float?    @map("conversion_factor")
+  minStock         Float     @default(0) @map("min_stock")
+  currentStock     Float     @default(0) @map("current_stock")
+  trackInventory   Boolean   @default(false) @map("track_inventory")
+  isIngredient     Boolean   @default(false) @map("is_ingredient")
+  techCard         String    @default("[]") @map("tech_card")
+  preparationArea  String?   @map("preparation_area")
+  cookingMethod    String?   @map("cooking_method")
+  noDiscounts      Boolean   @default(false) @map("no_discounts")
+  isActive         Boolean   @default(true) @map("is_active")
+  sortOrder        Int       @default(0) @map("sort_order")
+  tags             String    @default("[]")
+  metadata         String    @default("{}")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  modifierGroups ProductModifierGroup[]
-  orderItems     OrderItem[]
-  inventory      InventoryMovement[]
+  modifierGroups    ProductModifierGroup[]
+  orderItems        OrderItem[]
+  inventory         InventoryMovement[]
   stockReceiptItems StockReceiptItem[]
 
   @@index([tenantId, categoryId])
@@ -196,43 +198,43 @@ model Product {
 }
 
 model ProductModifierGroup {
-  product         Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId       String         @map("product_id")
-  modifierGroup   ModifierGroup  @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
-  modifierGroupId String         @map("modifier_group_id")
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId       String        @map("product_id")
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  modifierGroupId String        @map("modifier_group_id")
 
   @@id([productId, modifierGroupId])
   @@map("product_modifier_groups")
 }
 
 model ModifierGroup {
-  id              String  @id @default(uuid())
-  name            String
-  description     String?
-  isRequired      Boolean @default(false) @map("is_required")
-  minSelections   Int     @default(0) @map("min_selections")
-  maxSelections   Int     @default(1) @map("max_selections")
-  sortOrder       Int     @default(0) @map("sort_order")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  isRequired    Boolean  @default(false) @map("is_required")
+  minSelections Int      @default(0) @map("min_selections")
+  maxSelections Int      @default(1) @map("max_selections")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  products     ProductModifierGroup[]
+  products      ProductModifierGroup[]
   modifierItems ModifierItem[]
 
   @@map("modifier_groups")
 }
 
 model ModifierItem {
-  id               String  @id @default(uuid())
-  modifierGroupId  String  @map("modifier_group_id")
-  modifierGroup    ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
-  name             String
-  price            Float   @default(0)
-  costPrice        Float   @default(0) @map("cost_price")
-  grossWeight      Float?  @map("gross_weight")
-  imageUrl         String? @map("image_url")
-  isActive         Boolean @default(true) @map("is_active")
-  sortOrder        Int     @default(0) @map("sort_order")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id              String        @id @default(uuid())
+  modifierGroupId String        @map("modifier_group_id")
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  name            String
+  price           Float         @default(0)
+  costPrice       Float         @default(0) @map("cost_price")
+  grossWeight     Float?        @map("gross_weight")
+  imageUrl        String?       @map("image_url")
+  isActive        Boolean       @default(true) @map("is_active")
+  sortOrder       Int           @default(0) @map("sort_order")
+  createdAt       DateTime      @default(now()) @map("created_at")
 
   orderItemModifiers OrderItemModifier[]
 
@@ -262,50 +264,55 @@ model Table {
 }
 
 model Order {
-  id                String    @id @default(uuid())
-  tenantId          String    @map("tenant_id")
-  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branchId          String?   @map("branch_id")
-  branch            Branch?   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  tableId           String?   @map("table_id")
-  table             Table?    @relation(fields: [tableId], references: [id])
-  userId            String?   @map("user_id")
-  user              User?     @relation(fields: [userId], references: [id])
-  cashShiftId       String?   @map("cash_shift_id")
-  cashShift         CashShift? @relation(fields: [cashShiftId], references: [id])
-  orderNumber       Int       @default(0) @map("order_number")
-  status            String    @default("pending")
-  type              String    @default("dine_in")
-  subtotal          Float     @default(0)
-  taxAmount         Float     @default(0) @map("tax_amount")
-  discountAmount    Float     @default(0) @map("discount_amount")
-  total             Float     @default(0)
-  notes             String?
-  customerName      String?   @map("customer_name")
-  customerPhone     String?   @map("customer_phone")
-  estimatedReadyAt  DateTime? @map("estimated_ready_at")
-  completedAt       DateTime? @map("completed_at")
+  id                  String     @id @default(uuid())
+  tenantId            String     @map("tenant_id")
+  tenant              Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchId            String?    @map("branch_id")
+  branch              Branch?    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tableId             String?    @map("table_id")
+  table               Table?     @relation(fields: [tableId], references: [id])
+  userId              String?    @map("user_id")
+  user                User?      @relation(fields: [userId], references: [id])
+  cashShiftId         String?    @map("cash_shift_id")
+  cashShift           CashShift? @relation(fields: [cashShiftId], references: [id])
+  orderNumber         Int        @default(0) @map("order_number")
+  status              String     @default("pending")
+  type                String     @default("dine_in")
+  subtotal            Float      @default(0)
+  taxAmount           Float      @default(0) @map("tax_amount")
+  discountAmount      Float      @default(0) @map("discount_amount")
+  total               Float      @default(0)
+  notes               String?
+  customerName        String?    @map("customer_name")
+  customerPhone       String?    @map("customer_phone")
+  // Клиент из списка заведения — у продажи в долг он обязателен; имя и
+  // телефон выше по-прежнему пишутся в чек.
+  customerId          String?    @map("customer_id")
+  customer            Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  estimatedReadyAt    DateTime?  @map("estimated_ready_at")
+  completedAt         DateTime?  @map("completed_at")
   // Кухня — отдельно от оплаты. status говорит о деньгах (completed — продажа
   // оплачена, на нём держатся выручка, смена и склад), kitchenStatus — о том,
   // где блюдо: new → cooking → ready → served. null — кухня не участвует
   // (магазин). Оплаченный заказ кафе уходит на кухню сразу, а отчёты не ждут,
   // пока его приготовят.
-  kitchenStatus     String?   @map("kitchen_status")
-  kitchenStatusAt   DateTime? @map("kitchen_status_at")
+  kitchenStatus       String?    @map("kitchen_status")
+  kitchenStatusAt     DateTime?  @map("kitchen_status_at")
   // Офлайн-режим кассы: продажа пробита без связи и дошла до сервера позже.
   // offlineAt — когда её пробили на кассе (createdAt тоже ставится на это
   // время, чтобы отчёты по дням и часам были верными). Флаги — что было не
   // так, когда она дошла: остатка не хватило (склад ушёл в минус) или цена на
   // сервере к тому времени была другой (взяли по цене кассы).
-  offlineAt           DateTime? @map("offline_at")
-  offlineShortfall    Boolean   @default(false) @map("offline_shortfall")
-  offlinePriceChanged Boolean   @default(false) @map("offline_price_changed")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  offlineAt           DateTime?  @map("offline_at")
+  offlineShortfall    Boolean    @default(false) @map("offline_shortfall")
+  offlinePriceChanged Boolean    @default(false) @map("offline_price_changed")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
 
-  items     OrderItem[]
-  payments  Payment[]
-  receipts  Receipt[]
+  items       OrderItem[]
+  payments    Payment[]
+  debtEntries CustomerDebtEntry[]
+  receipts    Receipt[]
 
   // Номер заказа уникален в пределах точки. На SQLite это держалось на том,
   // что писатель в базе один; на Postgres — на счётчике OrderCounter, а это
@@ -379,34 +386,34 @@ model OrderItem {
 }
 
 model OrderItemModifier {
-  id              String       @id @default(uuid())
-  orderItemId     String       @map("order_item_id")
-  orderItem       OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  modifierItemId  String       @map("modifier_item_id")
-  modifierItem    ModifierItem @relation(fields: [modifierItemId], references: [id])
-  price           Float        @default(0)
-  createdAt       DateTime     @default(now()) @map("created_at")
+  id             String       @id @default(uuid())
+  orderItemId    String       @map("order_item_id")
+  orderItem      OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifierItemId String       @map("modifier_item_id")
+  modifierItem   ModifierItem @relation(fields: [modifierItemId], references: [id])
+  price          Float        @default(0)
+  createdAt      DateTime     @default(now()) @map("created_at")
 
   @@index([orderItemId])
   @@map("order_item_modifiers")
 }
 
 model Payment {
-  id                   String   @id @default(uuid())
-  tenantId             String   @map("tenant_id")
-  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  orderId              String   @map("order_id")
-  order                Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  method               String
-  amount               Float
-  tipAmount            Float    @default(0) @map("tip_amount")
-  status               String   @default("pending")
-  transactionId        String?  @map("transaction_id")
-  cardLastFour         String?  @map("card_last_four")
-  stripePaymentIntentId String? @map("stripe_payment_intent_id")
-  metadata             String   @default("{}")
-  processedAt          DateTime? @map("processed_at")
-  createdAt            DateTime @default(now()) @map("created_at")
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId               String    @map("order_id")
+  order                 Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method                String
+  amount                Float
+  tipAmount             Float     @default(0) @map("tip_amount")
+  status                String    @default("pending")
+  transactionId         String?   @map("transaction_id")
+  cardLastFour          String?   @map("card_last_four")
+  stripePaymentIntentId String?   @map("stripe_payment_intent_id")
+  metadata              String    @default("{}")
+  processedAt           DateTime? @map("processed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   @@index([orderId])
   @@index([tenantId, createdAt])
@@ -414,18 +421,18 @@ model Payment {
 }
 
 model InventoryMovement {
-  id         String   @id @default(uuid())
-  tenantId   String   @map("tenant_id")
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  productId  String   @map("product_id")
-  product    Product  @relation(fields: [productId], references: [id])
-  type       String
-  quantity   Float
-  reason     String?
-  referenceId String? @map("reference_id")
-  userId     String?  @map("user_id")
-  user       User?    @relation(fields: [userId], references: [id])
-  createdAt  DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productId   String   @map("product_id")
+  product     Product  @relation(fields: [productId], references: [id])
+  type        String
+  quantity    Float
+  reason      String?
+  referenceId String?  @map("reference_id")
+  userId      String?  @map("user_id")
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([tenantId, createdAt])
   @@index([productId])
@@ -433,70 +440,70 @@ model InventoryMovement {
 }
 
 model StockReceipt {
-  id             String   @id @default(uuid())
-  tenantId       String   @map("tenant_id")
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId         String?  @map("user_id")
-  user           User?    @relation(fields: [userId], references: [id])
-  supplierName   String?  @map("supplier_name")
-  invoiceNumber  String?  @map("invoice_number")
-  totalAmount    Float    @default(0) @map("total_amount")
-  notes          String?
-  createdAt      DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId        String?  @map("user_id")
+  user          User?    @relation(fields: [userId], references: [id])
+  supplierName  String?  @map("supplier_name")
+  invoiceNumber String?  @map("invoice_number")
+  totalAmount   Float    @default(0) @map("total_amount")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  items          StockReceiptItem[]
+  items StockReceiptItem[]
 
   @@map("stock_receipts")
 }
 
 model StockReceiptItem {
-  id             String   @id @default(uuid())
-  receiptId      String   @map("receipt_id")
-  receipt        StockReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  productId      String   @map("product_id")
-  product        Product  @relation(fields: [productId], references: [id])
-  quantity       Float
-  costPrice      Float    @map("cost_price")
-  totalCost      Float    @map("total_cost")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id        String       @id @default(uuid())
+  receiptId String       @map("receipt_id")
+  receipt   StockReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  productId String       @map("product_id")
+  product   Product      @relation(fields: [productId], references: [id])
+  quantity  Float
+  costPrice Float        @map("cost_price")
+  totalCost Float        @map("total_cost")
+  createdAt DateTime     @default(now()) @map("created_at")
 
   @@map("stock_receipt_items")
 }
 
 model Reservation {
-  id               String   @id @default(uuid())
-  tenantId         String   @map("tenant_id")
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branchId         String?  @map("branch_id")
-  branch           Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  tableId          String?  @map("table_id")
-  table            Table?   @relation(fields: [tableId], references: [id])
-  customerName     String   @map("customer_name")
-  customerPhone    String?  @map("customer_phone")
-  customerEmail    String?  @map("customer_email")
-  partySize        Int
-  reservationDate  DateTime @map("reservation_date")
-  reservationTime  DateTime @map("reservation_time")
-  status           String   @default("confirmed")
-  notes            String?
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchId        String?  @map("branch_id")
+  branch          Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tableId         String?  @map("table_id")
+  table           Table?   @relation(fields: [tableId], references: [id])
+  customerName    String   @map("customer_name")
+  customerPhone   String?  @map("customer_phone")
+  customerEmail   String?  @map("customer_email")
+  partySize       Int
+  reservationDate DateTime @map("reservation_date")
+  reservationTime DateTime @map("reservation_time")
+  status          String   @default("confirmed")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("reservations")
 }
 
 model Receipt {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  orderId   String   @map("order_id")
-  order     Order    @relation(fields: [orderId], references: [id])
-  template  String   @default("standard")
-  content   String   @default("{}")
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId   String    @map("order_id")
+  order     Order     @relation(fields: [orderId], references: [id])
+  template  String    @default("standard")
+  content   String    @default("{}")
   printedAt DateTime? @map("printed_at")
   emailedAt DateTime? @map("emailed_at")
-  emailTo   String?  @map("email_to")
-  createdAt DateTime @default(now()) @map("created_at")
+  emailTo   String?   @map("email_to")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@map("receipts")
 }
@@ -536,27 +543,31 @@ model Notification {
 }
 
 model CashShift {
-  id             String    @id @default(uuid())
-  tenantId       String    @map("tenant_id")
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId         String    @map("user_id")
-  user           User      @relation(fields: [userId], references: [id])
-  status         String    @default("open")
-  openingCash    Float     @default(0) @map("opening_cash")
-  closingCash    Float?    @map("closing_cash")
-  totalSales     Float     @default(0) @map("total_sales")
-  totalCashSales Float     @default(0) @map("total_cash_sales")
-  totalCardSales Float     @default(0) @map("total_card_sales")
-  totalQrSales   Float     @default(0) @map("total_qr_sales")
-  totalTips      Float     @default(0) @map("total_tips")
-  totalRefunds   Float     @default(0) @map("total_refunds")
-  expectedCash   Float?    @map("expected_cash")
-  difference     Float?    @map("difference")
-  notes          String?
-  openedAt       DateTime  @default(now()) @map("opened_at")
-  closedAt       DateTime? @map("closed_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId              String    @map("user_id")
+  user                User      @relation(fields: [userId], references: [id])
+  status              String    @default("open")
+  openingCash         Float     @default(0) @map("opening_cash")
+  closingCash         Float?    @map("closing_cash")
+  totalSales          Float     @default(0) @map("total_sales")
+  totalCashSales      Float     @default(0) @map("total_cash_sales")
+  totalCardSales      Float     @default(0) @map("total_card_sales")
+  totalQrSales        Float     @default(0) @map("total_qr_sales")
+  totalTips           Float     @default(0) @map("total_tips")
+  totalRefunds        Float     @default(0) @map("total_refunds")
+  expectedCash        Float?    @map("expected_cash")
+  // Продано в долг (в ящик не попало) и погашено долгов на этой кассе.
+  totalDebtSales      Float     @default(0) @map("total_debt_sales")
+  totalDebtRepaidCash Float     @default(0) @map("total_debt_repaid_cash")
+  totalDebtRepaidCard Float     @default(0) @map("total_debt_repaid_card")
+  difference          Float?    @map("difference")
+  notes               String?
+  openedAt            DateTime  @default(now()) @map("opened_at")
+  closedAt            DateTime? @map("closed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   orders Order[]
 
@@ -592,4 +603,55 @@ model CatalogMeta {
   value String
 
   @@map("catalog_meta")
+}
+
+// Покупатели заведения — для продажи в долг. Список свой у каждого заведения;
+// телефон в нём не повторяется. debtBalance — текущий долг, меняется только в
+// одной транзакции с записью журнала CustomerDebtEntry.
+model Customer {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  firstName   String   @map("first_name")
+  lastName    String?  @map("last_name")
+  phone       String
+  phone2      String?
+  // Ручная оценка 1–5 и заметка — ставит администратор.
+  rating      Int?
+  note        String?
+  // «Не давать в долг» вручную; метка по возрасту долга считается отдельно.
+  debtBlocked Boolean  @default(false) @map("debt_blocked")
+  debtBalance Float    @default(0) @map("debt_balance")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  orders      Order[]
+  debtEntries CustomerDebtEntry[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, debtBalance])
+  @@map("customers")
+}
+
+// Журнал долга клиента: продажа в долг (+), погашение (−), возврат долговой
+// части чека (−). Сумма записей клиента = его debtBalance.
+model CustomerDebtEntry {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId  String   @map("customer_id")
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type        String // sale | repayment | refund
+  amount      Float
+  method      String? // cash | card — у погашения
+  orderId     String?  @map("order_id")
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  cashShiftId String?  @map("cash_shift_id")
+  userId      String?  @map("user_id")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, customerId, createdAt])
+  @@index([cashShiftId])
+  @@map("customer_debt_entries")
 }

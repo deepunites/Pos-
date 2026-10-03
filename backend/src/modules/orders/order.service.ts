@@ -23,6 +23,7 @@ import { AppError, ConflictError, NotFoundError } from "../../utils/errors.js";
 import { inTransaction } from "../../utils/transaction.js";
 import { attachIdempotencyResource, claimIdempotencyKey, type IdempotencyContext } from "../../utils/idempotency.js";
 import { lockOrder } from "./order.locks.js";
+import { chargeDebt } from "../customers/customer.service.js";
 
 // Сколько часов заказ может висеть на экране кухни, пока его не выдали.
 export const KITCHEN_WINDOW_HOURS = 12;
@@ -355,6 +356,31 @@ export class OrderService {
             cardLastFour: payment.cardLastFour,
             status: "completed",
             processedAt,
+          },
+        });
+      }
+
+      // Клиент: продажа в долг записывается ему в той же транзакции, что и чек;
+      // имя и телефон клиента попадают в чек, если касса их не прислала.
+      if (data.customerId) {
+        const debt = data.payments?.find((part) => part.method === "debt");
+        const customer = debt
+          ? await chargeDebt(tx, {
+              tenantId,
+              customerId: data.customerId,
+              orderId: row.id,
+              amount: debt.amount,
+              cashShiftId: row.cashShiftId,
+              userId: row.userId ?? userId,
+            })
+          : await tx.customer.findFirst({ where: { id: data.customerId, tenantId } });
+        if (!customer) throw new NotFoundError("Клиент не найден");
+        await tx.order.update({
+          where: { id: row.id },
+          data: {
+            customerId: customer.id,
+            customerName: row.customerName ?? [customer.firstName, customer.lastName].filter(Boolean).join(" "),
+            customerPhone: row.customerPhone ?? customer.phone,
           },
         });
       }
