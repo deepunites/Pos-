@@ -360,3 +360,15 @@
 
 /* Подпись горячей клавиши на кнопке верхней строки — мелко и всегда (D-7). */
 .sh-chip-fk { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 1px 5px; border: 1px solid currentColor; border-radius: 3px; opacity: 0.6; }
+
+/* офлайн-режим: метка очереди в шапке, список, «оплачено без связи» */
+.sh-top .sh-chip.sh-chip-queue { border-color: rgba(245, 158, 11, 0.7); color: #fbbf24; }
+.sh-top .sh-chip.sh-chip-queue .i { color: #fbbf24; }
+.sh-top .sh-chip.sh-chip-queue.bad { border-color: rgba(248, 113, 113, 0.8); color: #fca5a5; }
+.sh-top .sh-chip.sh-chip-queue.bad .i { color: #fca5a5; }
+.sh-q-wait { color: var(--muted); }
+.sh-q-err { color: var(--red); white-space: normal !important; }
+.sh-q-note { margin-top: 14px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.sh-done .ok.off { background: rgba(245, 158, 11, 0.14); color: #d97706; }
+.sh-done-off { margin-top: 10px; padding: 8px 12px; border-radius: 4px; background: rgba(245, 158, 11, 0.12); color: var(--ink); font-size: 13.5px; }
+.sh-alt:disabled .sh-fk { opacity: 0.4; }

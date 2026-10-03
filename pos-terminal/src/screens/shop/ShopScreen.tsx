@@ -4,6 +4,10 @@ import { Lock, LogOut, Moon, PackagePlus, PauseCircle, Sun, Volume2, VolumeX } f
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import { ConnectionDot } from "../../components/ConnectionStatus";
+import { OfflineQueueChip } from "../../components/OfflineQueue";
+import { useConnection } from "../../services/connection";
+import { findInCatalog, loadCatalog, refreshCatalog, searchCatalog } from "../../services/offlineCatalog";
+import { isNoConnection } from "../../utils/apiError";
 import { apiErrorMessage } from "../../utils/apiError";
 import { undoToast } from "../../utils/undoToast";
 import { useCartStore } from "../../store/cartStore";
@@ -34,6 +38,21 @@ interface ShopScreenProps {
   onLogout: () => void;
   onCloseShift: () => void;
 }
+
+// Поиск товаров по словам: с сервера, а без связи — по каталогу на планшете (офлайн-режим).
+async function searchProducts(term: string): Promise<Product[]> {
+  try {
+    return (await api.get("/products", { params: { search: term, limit: 8, isActive: true, isIngredient: false, sort: "name" } })).data.data as Product[];
+  } catch (error) {
+    if (isNoConnection(error)) return searchCatalog(await loadCatalog(), term);
+    throw error;
+  }
+}
+
+// Без связи остатки — из копии каталога и могут быть устаревшими: касса не
+// отказывает, а предупреждает, и продажа уходит в минус с пометкой (решение
+// владельца: покупатель у кассы важнее устаревшей цифры).
+const offlineNow = () => useConnection.getState().problem !== null;
 
 // "5*4780012340011" / "0,5×яблоки": a multiplier typed in front of the code.
 const MULTIPLIER = /^(\d+(?:[.,]\d+)?)\s*[*×xх]\s*(.*)$/i;
@@ -113,8 +132,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
     enabled: suggestOn && debouncedTerm.length >= 2,
     staleTime: 20_000,
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      api.get("/products", { params: { search: debouncedTerm, limit: 8, isActive: true, isIngredient: false, sort: "name" } }).then((r) => r.data.data as Product[]),
+    queryFn: () => searchProducts(debouncedTerm),
   });
   const suggestions = suggestOn ? suggestData ?? [] : [];
   // The list is kept from the previous word while the next one loads, so it can
@@ -134,6 +152,20 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
     toast.error(message, { id: "shop-error", duration });
   }, []);
 
+  // Без связи остатка по копии каталога не хватает — продаём в минус, но кассир это видит.
+  const warnShort = useCallback((name: string) => {
+    toast(`«${name}»: по последним данным на складе нет — продаём в минус, в отчёте будет пометка`, { id: "shop-short", icon: "⚠️", duration: 3500 });
+  }, []);
+
+  // Копия каталога для работы без связи: при входе, раз в 10 минут и когда связь вернулась.
+  const offline = useConnection((s) => s.problem !== null);
+  useEffect(() => {
+    if (offline) return;
+    void refreshCatalog();
+    const timer = setInterval(() => void refreshCatalog(), 10 * 60_000);
+    return () => clearInterval(timer);
+  }, [offline]);
+
   const touched = useCallback((id: string) => {
     setSelectedId(id);
     setFlashId(id);
@@ -148,8 +180,11 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       const store = useCartStore.getState();
       const left = stockLeft(product, store.items, mode === "set" ? lineId : undefined);
       if (product.trackInventory && grams / gramsPerUnit(unit) > left + 1e-9) {
-        fail(`«${product.name}»: осталось ${formatQty(stockInKg(Math.max(left, 0), unit))} кг`);
-        return;
+        if (!offlineNow()) {
+          fail(`«${product.name}»: осталось ${formatQty(stockInKg(Math.max(left, 0), unit))} кг`);
+          return;
+        }
+        warnShort(product.name);
       }
       const id = store.addWeight(
         { productId: product.id, name: productTitle(product), rate: Number(product.price), weightUnit: unit, barcode: product.barcode ?? null, emoji: emojiFor(product) },
@@ -158,7 +193,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       );
       touched(id);
     },
-    [fail, touched]
+    [fail, touched, warnShort]
   );
 
   const addProduct = useCallback(
@@ -166,7 +201,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       products.current.set(product.id, product);
       const store = useCartStore.getState();
       const left = stockLeft(product, store.items);
-      if (product.trackInventory && left <= 0) {
+      if (product.trackInventory && left <= 0 && !offlineNow()) {
         fail(`«${product.name}» — нет в наличии`);
         return;
       }
@@ -187,8 +222,11 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         qty = multiplier;
       }
       if (qty > left) {
-        fail(`«${product.name}»: осталось ${formatQty(left)}`);
-        return;
+        if (!offlineNow()) {
+          fail(`«${product.name}»: осталось ${formatQty(left)}`);
+          return;
+        }
+        warnShort(product.name);
       }
       const id = store.addPieces(
         { productId: product.id, name: productTitle(product), price: Number(product.price), barcode: product.barcode ?? null, emoji: emojiFor(product) },
@@ -196,7 +234,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       );
       touched(id);
     },
-    [addWeighed, fail, touched]
+    [addWeighed, fail, touched, warnShort]
   );
 
   // A tile / quick key uses the typed multiplier too, then drops it.
@@ -223,6 +261,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         lookups.current.set(code, { at: Date.now(), product: null });
         return null;
       }
+      if (isNoConnection(error)) return findInCatalog(await loadCatalog(), code);
       throw error;
     }
   }, []);
@@ -232,6 +271,10 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   // is told what the item is and whom to ask.
   const offerCatalog = useCallback(
     async (code: string, multiplier: number | null) => {
+      if (offlineNow()) {
+        fail(`Товар «${code}» не найден — без связи новый товар не добавить`, 4500);
+        return;
+      }
       let answer: (CatalogHit | { found: false; valid: boolean }) | null = null;
       // A code nobody has seen may take a few seconds (the public catalogues are asked) — say so.
       const hint = window.setTimeout(() => toast.loading("Ищу товар в общей базе…", { id: "shop-lookup" }), 500);
@@ -305,8 +348,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         addProduct(byCode, multiplier);
         return;
       }
-      const res = await api.get("/products", { params: { search: text, limit: 8, isActive: true, isIngredient: false, sort: "name" } });
-      const found = res.data.data as Product[];
+      const found = await searchProducts(text);
       if (found.length === 1) {
         addProduct(found[0], multiplier);
       } else if (found.length > 1) {
@@ -380,13 +422,16 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       }
       const product = products.current.get(line.productId);
       if (delta === 1 && product && product.trackInventory && stockLeft(product, useCartStore.getState().items) < 1) {
-        fail(`«${line.name}»: больше нет на складе`);
-        return;
+        if (!offlineNow()) {
+          fail(`«${line.name}»: больше нет на складе`);
+          return;
+        }
+        warnShort(line.name);
       }
       updateQuantity(id, line.quantity + delta);
       setSelectedId(id);
     },
-    [fail, removeLine, updateQuantity]
+    [fail, removeLine, updateQuantity, warnShort]
   );
 
   const fetchProduct = useCallback(async (id: string): Promise<Product | null> => {
@@ -395,6 +440,13 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       products.current.set(id, product);
       return product;
     } catch (error) {
+      if (isNoConnection(error)) {
+        const cached = (await loadCatalog())?.products.find((p) => p.id === id) ?? null;
+        if (cached) {
+          products.current.set(id, cached);
+          return cached;
+        }
+      }
       toast.error(apiErrorMessage(error, "Не удалось загрузить товар"));
       return null;
     }
@@ -435,6 +487,10 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
     (method: PaymentMethod) => {
       if (useCartStore.getState().items.length === 0) {
         fail("Чек пуст");
+        return;
+      }
+      if (method !== "cash" && offlineNow()) {
+        fail("Без связи — только наличные: картой и по QR оплатить нельзя");
         return;
       }
       setPayMethod(method);
@@ -592,6 +648,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
           Смена от {new Date(shift.openedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
           <Lock className="i" />
         </button>
+        <OfflineQueueChip />
         <ConnectionDot />
         <span className="sh-time tab">{hhmm}</span>
         <button
@@ -702,6 +759,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
           onCustomer={() => setShowCustomer(true)}
           onPay={openPay}
           canPay={items.length > 0}
+          offline={offline}
         />
       </div>
 

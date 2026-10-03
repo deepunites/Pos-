@@ -50,6 +50,7 @@ function setProblem(problem: ConnectionProblem): void {
 }
 
 export function reportReachable(): void {
+  noteServerContact();
   setProblem(browserOffline() ? "device" : null);
 }
 
@@ -97,6 +98,31 @@ export function watchConnection(): void {
   setInterval(() => {
     if (!useConnection.getState().problem && document.visibilityState === "visible") void checkConnection();
   }, HEARTBEAT_MS);
+}
+
+// ── сколько касса уже без связи (офлайн-режим) ─────────────────────────────
+
+/** Касса продаёт без связи не дольше двух суток; потом нужна связь. */
+export const OFFLINE_LIMIT_MS = 48 * 3600 * 1000;
+const CONTACT_KEY = "pos-last-contact";
+
+/** Сервер ответил — запомнить когда (любой ответ, даже 4xx, значит, что связь есть). */
+export function noteServerContact(now = Date.now()): void {
+  try {
+    localStorage.setItem(CONTACT_KEY, String(now));
+  } catch {
+    // без хранилища предел двух суток не проверить — не страшно
+  }
+}
+
+/** Касса не говорила с сервером дольше двух суток — новые продажи без связи запрещены. */
+export function offlineTooLong(now = Date.now()): boolean {
+  try {
+    const last = Number(localStorage.getItem(CONTACT_KEY));
+    return last > 0 && now - last > OFFLINE_LIMIT_MS;
+  } catch {
+    return false;
+  }
 }
 
 /** Для тестов: вернуть начальное состояние. */

@@ -8,11 +8,17 @@ import type { Order, PaymentMethod, Product } from "../../types";
 import { useMoney } from "../../hooks/useMoney";
 import { round2 } from "../../utils/money";
 import { parseDecimal } from "../../utils/weight";
-import { paymentErrorMessage } from "../../utils/apiError";
+import { isNoConnection, paymentErrorMessage } from "../../utils/apiError";
 import { checkoutKeyFor, forgetCheckoutKey } from "../../utils/checkoutKey";
+import { offlineTooLong, useConnection } from "../../services/connection";
+import { enqueueSale, stockUnits, type QueuedSale } from "../../services/offlineQueue";
+import { takeFromCatalog } from "../../services/offlineCatalog";
+import { sessionClaims } from "../../services/session";
 
 export interface SaleResult {
   order: Order;
+  /** Пробит без связи: чек на планшете, уйдёт на сервер позже (номера ещё нет). */
+  offline?: QueuedSale;
   method: PaymentMethod;
   total: number;
   /** What the customer handed over (cash only); null when paid exactly. */
@@ -38,6 +44,9 @@ const METHODS: Record<PaymentMethod, { label: string; icon: typeof Banknote }> =
  * Banknotes the customer is likely to hand over: the next round sum above the
  * total for each denomination, smallest first. 185 576 → 186 000, 190 000, 200 000.
  */
+/** Продажа без связи невозможна (не наличные, слишком давно без связи) — сказать кассиру почему. */
+class OfflineRefused extends Error {}
+
 export function cashSuggestions(total: number, fractionDigits: number): number[] {
   const denominations = fractionDigits === 0 ? [1_000, 5_000, 10_000, 50_000, 100_000, 200_000] : [1, 5, 10, 20, 50, 100];
   const sums = denominations.map((d) => Math.ceil(total / d) * d).filter((sum) => sum > total);
@@ -56,35 +65,71 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
   const change = Math.max(0, round2(paid - total));
   const short = cash && tendered !== null && tendered < total - 0.005;
 
+  const offlineNow = useConnection((s) => s.problem !== null);
+
   const checkout = useMutation({
-    mutationFn: async (): Promise<Order> => {
+    mutationFn: async (): Promise<{ order: Order | null; offline?: QueuedSale }> => {
       const { items } = useCartStore.getState();
       const lines = items.map((item) => ({ productId: item.productId, quantity: item.quantity, grams: item.grams }));
       // Повтор после обрыва связи — с тем же ключом: второй чек не создастся.
       const key = checkoutKeyFor({ cashShiftId: shiftId, items: lines });
-      const res = await api.post(
-        "/orders/checkout",
-        {
-          type: "takeaway",
-          cashShiftId: shiftId,
-          customerName: customerName || undefined,
-          customerPhone: customerPhone || undefined,
-          items: lines,
-          expectedTotal: total,
-          payment: { method },
-        },
-        { headers: { "Idempotency-Key": key } }
-      );
-      return res.data.data as Order;
+      const body = {
+        type: "takeaway",
+        cashShiftId: shiftId,
+        customerName: customerName || undefined,
+        customerPhone: customerPhone || undefined,
+        items: lines,
+        expectedTotal: total,
+        payment: { method },
+      };
+
+      // Офлайн-режим: без связи — только наличные, и чек ложится на планшет.
+      // `online` — запрос, который ушёл и остался без ответа: очередь сначала
+      // повторит его же (вдруг сервер его записал), а не пробьёт второй чек.
+      const saveOffline = async (online?: { key: string; body: unknown }) => {
+        const claims = sessionClaims();
+        if (!claims?.tenantId) throw new OfflineRefused("Нет связи, а касса не знает свою точку — войдите заново, когда связь вернётся");
+        const sale = await enqueueSale({
+          tenantId: claims.tenantId,
+          shiftId,
+          cashierId: claims.id,
+          items,
+          total,
+          tendered: cash ? tendered : null,
+          customerName,
+          customerPhone,
+          online,
+        });
+        await takeFromCatalog(stockUnits(items));
+        return { order: null, offline: sale };
+      };
+
+      if (useConnection.getState().problem) {
+        if (!cash) throw new OfflineRefused("Без связи принимаются только наличные");
+        if (offlineTooLong()) throw new OfflineRefused("Касса без связи больше двух суток — подключите интернет, чтобы продавать дальше");
+        return saveOffline();
+      }
+      try {
+        const res = await api.post("/orders/checkout", body, { headers: { "Idempotency-Key": key } });
+        return { order: res.data.data as Order };
+      } catch (error) {
+        if (cash && isNoConnection(error) && !offlineTooLong()) return saveOffline({ key, body });
+        throw error;
+      }
     },
-    onSuccess: (order) => {
+    onSuccess: ({ order, offline }) => {
       forgetCheckoutKey();
       // Stock moved on the server — tiles, quick keys and suggestions must not show yesterday's numbers.
       for (const key of ["shop-tiles", "shop-quick", "shop-suggest", "cash-shift"]) qc.invalidateQueries({ queryKey: [key] });
       useCartStore.getState().clearCart();
-      onPaid({ order, method, total, tendered: cash ? tendered : null, change: cash ? change : 0 });
+      const shown = order ?? ({ id: offline!.id, orderNumber: "", total } as unknown as Order);
+      onPaid({ order: shown, offline, method, total, tendered: cash ? tendered : null, change: cash ? change : 0 });
     },
     onError: async (error: Error & { response?: { status?: number; data?: { error?: string } } }) => {
+      if (error instanceof OfflineRefused) {
+        toast.error(error.message, { duration: 6000 });
+        return;
+      }
       if (error.response?.status === 409) {
         // Prices changed under the cart: re-price it from fresh product records and let the cashier look again.
         try {
@@ -152,7 +197,7 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
           </div>
           <div>
             <h3>{METHODS[method].label}</h3>
-            <p>Оплата чека</p>
+            <p>{offlineNow && cash ? "Нет связи — чек сохранится на кассе и уйдёт на сервер сам" : "Оплата чека"}</p>
           </div>
           <button className="sh-ic" onClick={onClose} aria-label="Закрыть" disabled={checkout.isPending}>
             <X className="i" />
