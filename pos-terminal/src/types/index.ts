@@ -169,6 +169,10 @@ export interface CashShift {
   totalCashSales: number;
   totalCardSales: number;
   totalQrSales: number;
+  /** Продано в долг (в ящик не попало) и погашено долгов на этой кассе. */
+  totalDebtSales?: number;
+  totalDebtRepaidCash?: number;
+  totalDebtRepaidCard?: number;
   totalTips: number;
   totalRefunds: number;
   expectedCash?: number;
