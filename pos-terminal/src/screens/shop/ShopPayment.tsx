@@ -47,6 +47,8 @@ const METHODS: Record<PaymentMethod, { label: string; icon: typeof Banknote }> =
 /** Продажа без связи невозможна (не наличные, слишком давно без связи) — сказать кассиру почему. */
 class OfflineRefused extends Error {}
 
+const CASH_CHECKOUT_TIMEOUT_MS = 8000;
+
 export function cashSuggestions(total: number, fractionDigits: number): number[] {
   const denominations = fractionDigits === 0 ? [1_000, 5_000, 10_000, 50_000, 100_000, 200_000] : [1, 5, 10, 20, 50, 100];
   const sums = denominations.map((d) => Math.ceil(total / d) * d).filter((sum) => sum > total);
@@ -110,7 +112,13 @@ export default function ShopPayment({ method, total, shiftId, onClose, onPaid }:
         return saveOffline();
       }
       try {
-        const res = await api.post("/orders/checkout", body, { headers: { "Idempotency-Key": key } });
+        // Наличные не ждут 30 секунд «висящего» интернета: через 8 секунд чек
+        // ложится на планшет (с этим же ключом — дошёл он до сервера или нет,
+        // повтор не создаст второй). Карту и QR ждём дольше: им без связи некуда.
+        const res = await api.post("/orders/checkout", body, {
+          headers: { "Idempotency-Key": key },
+          ...(cash ? { timeout: CASH_CHECKOUT_TIMEOUT_MS } : {}),
+        });
         return { order: res.data.data as Order };
       } catch (error) {
         if (cash && isNoConnection(error) && !offlineTooLong()) return saveOffline({ key, body });
