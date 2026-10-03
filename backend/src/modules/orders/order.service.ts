@@ -329,19 +329,35 @@ export class OrderService {
         throw new OrderTotalChangedError(row.total);
       }
 
-      await tx.payment.create({
-        data: {
-          tenantId,
-          orderId: row.id,
-          method: data.payment.method,
-          amount: row.total,
-          tipAmount: data.payment.tipAmount || 0,
-          transactionId: data.payment.transactionId,
-          cardLastFour: data.payment.cardLastFour,
-          status: "completed",
-          processedAt: data.offline ? data.offline.soldAt : new Date(),
-        },
-      });
+      // Части оплаты («Карта + наличные») — каждая своей записью: смена и
+      // отчёты считают деньги по способам. Вместе они — ровно итог чека.
+      const processedAt = data.offline ? data.offline.soldAt : new Date();
+      if (data.payments) {
+        const paid = round2(data.payments.reduce((sum, part) => sum + part.amount, 0));
+        if (Math.abs(paid - row.total) > 0.01) {
+          throw new AppError(`Части оплаты (${paid}) не сходятся с итогом чека (${row.total})`);
+        }
+        for (const part of data.payments) {
+          await tx.payment.create({
+            data: { tenantId, orderId: row.id, method: part.method, amount: round2(part.amount), status: "completed", processedAt },
+          });
+        }
+      } else {
+        const payment = data.payment!;
+        await tx.payment.create({
+          data: {
+            tenantId,
+            orderId: row.id,
+            method: payment.method,
+            amount: row.total,
+            tipAmount: payment.tipAmount || 0,
+            transactionId: payment.transactionId,
+            cardLastFour: payment.cardLastFour,
+            status: "completed",
+            processedAt,
+          },
+        });
+      }
 
       await deductTechCardIngredients(tx, { tenantId, userId: row.userId ?? userId, orderId: row.id });
       await attachIdempotencyResource(tx, tenantId, idem, row.id);
