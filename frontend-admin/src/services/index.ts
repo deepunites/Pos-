@@ -373,3 +373,55 @@ export const techCardService = {
   copy: (id: string) => api.post<ApiResponse<TechCard>>(`/tech-cards/${id}/copy`),
   recalculate: (id: string) => api.post<ApiResponse<TechCard>>(`/tech-cards/${id}/recalculate`),
 };
+
+// Клиенты заведения и их долги (касса продаёт в долг, админка смотрит,
+// оценивает и принимает погашения).
+export type DebtLabel = "ok" | "warn" | "blocked";
+
+export interface Customer {
+  id: string;
+  firstName: string;
+  lastName?: string | null;
+  phone: string;
+  phone2?: string | null;
+  rating?: number | null;
+  note?: string | null;
+  debtBlocked: boolean;
+  debtBalance: number;
+  label: DebtLabel;
+  debtSince?: string | null;
+  debtDays: number;
+  createdAt: string;
+}
+
+export interface CustomerDebtEntry {
+  id: string;
+  type: "sale" | "repayment" | "refund";
+  amount: number;
+  method?: "cash" | "card" | null;
+  cashShiftId?: string | null;
+  note?: string | null;
+  createdAt: string;
+  order?: { id: string; orderNumber: number; total: number } | null;
+}
+
+export interface CustomerSummary {
+  customers: number;
+  debtors: number;
+  totalDebt: number;
+  overdueDebt: number;
+}
+
+export type CustomerInput = { firstName: string; lastName?: string | null; phone: string; phone2?: string | null };
+
+export const customerService = {
+  list: (params?: { search?: string; withDebt?: boolean; limit?: number }) => api.get<ApiResponse<Customer[]>>("/customers", { params }),
+  summary: () => api.get<ApiResponse<CustomerSummary>>("/customers/summary"),
+  get: (id: string) => api.get<ApiResponse<Customer & { history: CustomerDebtEntry[] }>>(`/customers/${id}`),
+  create: (data: CustomerInput) => api.post<ApiResponse<Customer>>("/customers", data),
+  update: (id: string, data: Partial<CustomerInput> & { rating?: number | null; note?: string | null; debtBlocked?: boolean }) =>
+    api.patch<ApiResponse<Customer>>(`/customers/${id}`, data),
+  repay: (id: string, data: { amount: number; method: "cash" | "card"; note?: string }, idempotencyKey: string) =>
+    api.post(`/customers/${id}/repayments`, data, { headers: { "Idempotency-Key": idempotencyKey } }),
+};
+
