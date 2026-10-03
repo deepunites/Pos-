@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Check, Printer, ScanBarcode } from "lucide-react";
+import { Check, CloudOff, Printer, ScanBarcode } from "lucide-react";
 import toast from "react-hot-toast";
 import { useMoney } from "../../hooks/useMoney";
-import { printReceipt } from "../../utils/printReceipt";
+import { printOfflineReceipt, printReceipt } from "../../utils/printReceipt";
 import type { SaleResult } from "./ShopPayment";
 
 const LABEL = { cash: "наличные", card: "карта", qr: "QR" } as const;
@@ -19,13 +19,18 @@ interface SaleDoneProps {
  * the window and starts the next check without touching the screen.
  */
 export default function SaleDone({ result, onNext }: SaleDoneProps) {
-  const { money, parts } = useMoney();
+  const { money, parts, shopName } = useMoney();
   const [printing, setPrinting] = useState(false);
+  const offline = result.offline;
 
   const print = async () => {
     setPrinting(true);
     try {
-      await printReceipt(result.order.id);
+      if (offline) {
+        printOfflineReceipt({ shopName, soldAt: offline.soldAt, lines: offline.lines, total: result.total, tendered: result.tendered, change: result.change, money });
+      } else {
+        await printReceipt(result.order.id);
+      }
       toast.success("Чек отправлен на печать", { duration: 1500 });
     } catch {
       toast.error("Не удалось напечатать чек");
@@ -57,13 +62,12 @@ export default function SaleDone({ result, onNext }: SaleDoneProps) {
     <div className="sh-scrim">
       <div className="sh-modal narrow" role="dialog" aria-label="Оплачено">
         <div className="sh-done">
-          <div className="ok">
-            <Check className="i" />
-          </div>
-          <h3>Оплачено</h3>
+          <div className={`ok${offline ? " off" : ""}`}>{offline ? <CloudOff className="i" /> : <Check className="i" />}</div>
+          <h3>{offline ? "Оплачено без связи" : "Оплачено"}</h3>
           <div className="sub tab">
-            Чек № {result.order.orderNumber} · {LABEL[result.method]} · {money(result.total)}
+            {offline ? "Чек сохранён на кассе" : `Чек № ${result.order.orderNumber}`} · {LABEL[result.method]} · {money(result.total)}
           </div>
+          {offline && <div className="sh-done-off">Уйдёт на сервер сам, когда появится связь. Товар можно отдавать.</div>}
 
           {result.method === "cash" && result.change > 0 && (
             <div className="chg">

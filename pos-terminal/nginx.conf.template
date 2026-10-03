@@ -24,6 +24,23 @@ server {
         return 200 'ok';
     }
 
+    # Офлайн-режим: service worker и манифест браузер должен перепроверять
+    # каждый раз — иначе планшет неделями сидит на старой версии кассы.
+    location = /sw.js {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
+    location = /manifest.webmanifest {
+        add_header Cache-Control "no-cache";
+        default_type application/manifest+json;
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

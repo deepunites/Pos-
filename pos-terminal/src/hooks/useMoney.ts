@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import api from "../services/api";
+import { sessionClaims } from "../services/session";
+import { isNoConnection } from "../utils/apiError";
 import { compactAmount, currencyFormat, currencySymbol, formatMoney, moneyParts, quickCashAmounts } from "../utils/money";
 
 /**
@@ -7,10 +9,40 @@ import { compactAmount, currencyFormat, currencySymbol, formatMoney, moneyParts,
  * react-query, so all screens share one settings request — and one answer to
  * "which currency is this shop in" instead of the hardcoded сўм/₽/$ mix.
  */
+// Настройки точки, сохранённые при последнем ответе сервера. Без связи после
+// перезагрузки касса магазина иначе открылась бы кафе в долларах — и продавать
+// без связи было бы нечем (офлайн-режим).
+const SETTINGS_KEY = "pos-settings";
+
+function savedSettings(): Record<string, unknown> | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
+    return saved && saved.id === sessionClaims()?.tenantId ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadSettings() {
+  try {
+    const data = (await api.get("/settings")).data.data;
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+    } catch {
+      // без хранилища — просто без офлайн-копии
+    }
+    return data;
+  } catch (error) {
+    const saved = isNoConnection(error) ? savedSettings() : null;
+    if (saved) return saved;
+    throw error;
+  }
+}
+
 export function useMoney() {
   const { data: settings, isError } = useQuery({
     queryKey: ["settings"],
-    queryFn: () => api.get("/settings").then((r) => r.data.data),
+    queryFn: loadSettings,
     staleTime: 5 * 60 * 1000,
   });
 

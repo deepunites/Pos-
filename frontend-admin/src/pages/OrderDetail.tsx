@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useOrder } from "../hooks/useOrders";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Badge, { statusBadge } from "../components/Badge";
+import OfflineBadges, { OfflineNote } from "../components/OfflineBadges";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useMoney } from "../hooks/useMoney";
@@ -24,8 +25,13 @@ export default function OrderDetail() {
           <h1 className="text-2xl font-bold text-gray-900">Заказ №{order.orderNumber}</h1>
           <p className="text-gray-500">{format(new Date(order.createdAt), "d MMMM yyyy HH:mm", { locale: ru })}</p>
         </div>
-        <div className="ml-auto"><Badge variant={statusBadge(order.status).variant}>{statusBadge(order.status).label}</Badge></div>
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
+          <OfflineBadges order={order} />
+          <Badge variant={statusBadge(order.status).variant}>{statusBadge(order.status).label}</Badge>
+        </div>
       </div>
+
+      <OfflineNote order={order} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="card"><p className="text-xs text-gray-500">Клиент</p><p className="text-sm font-medium">{order.customerName || "Гость"}</p></div>

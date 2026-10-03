@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Scale } from "lucide-react";
 import api from "../../services/api";
+import { listCatalog, loadCatalog } from "../../services/offlineCatalog";
+import { isNoConnection } from "../../utils/apiError";
 import type { Product } from "../../types";
 import { emojiFor, productTitle, shelfPrice } from "./shopProduct";
 
@@ -22,10 +24,18 @@ export function useQuickProducts() {
     queryKey: ["shop-quick"],
     staleTime: 60_000,
     queryFn: async () => {
-      const tagged = await api.get("/products", { params: { ...BASE, tag: "quick" } });
-      if (tagged.data.data.length > 0) return tagged.data.data as Product[];
-      const fallback = await api.get("/products", { params: { ...BASE, noBarcode: true, weighted: false } });
-      return fallback.data.data as Product[];
+      try {
+        const tagged = await api.get("/products", { params: { ...BASE, tag: "quick" } });
+        if (tagged.data.data.length > 0) return tagged.data.data as Product[];
+        const fallback = await api.get("/products", { params: { ...BASE, noBarcode: true, weighted: false } });
+        return fallback.data.data as Product[];
+      } catch (error) {
+        // Без связи — те же кнопки из каталога на планшете (офлайн-режим).
+        if (!isNoConnection(error)) throw error;
+        const catalog = await loadCatalog();
+        const tagged = listCatalog(catalog, { tag: "quick" });
+        return (tagged.length > 0 ? tagged : listCatalog(catalog, { noBarcode: true, weighted: false })).slice(0, Number(BASE.limit) || 12);
+      }
     },
   });
 }

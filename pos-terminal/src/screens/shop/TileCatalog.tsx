@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Scale } from "lucide-react";
 import api from "../../services/api";
+import { listCatalog, loadCatalog } from "../../services/offlineCatalog";
+import { isNoConnection } from "../../utils/apiError";
 import type { CartItem, Category, Product } from "../../types";
 import { formatKg } from "../../utils/weight";
 import { emojiFor, productTitle, shelfPrice, stockLabel, stockState, weightUnit } from "./shopProduct";
@@ -39,7 +41,14 @@ function inCartLabel(productId: string, items: CartItem[]): string | null {
 export default function TileCatalog({ filter, onFilter, items, parts, onPick }: TileCatalogProps) {
   const { data: categoriesAll } = useQuery<Category[]>({
     queryKey: ["categories"],
-    queryFn: () => api.get("/categories").then((r) => r.data.data),
+    queryFn: async () => {
+      try {
+        return (await api.get("/categories")).data.data;
+      } catch (error) {
+        if (isNoConnection(error)) return (await loadCatalog())?.categories ?? [];
+        throw error;
+      }
+    },
   });
   const categories = (categoriesAll ?? []).filter((c) => !c.isIngredient && (c._count?.products ?? 1) > 0);
 
@@ -47,18 +56,26 @@ export default function TileCatalog({ filter, onFilter, items, parts, onPick }: 
     queryKey: ["shop-tiles", filter],
     initialPageParam: 1,
     staleTime: 15_000,
-    queryFn: ({ pageParam }) =>
-      api
-        .get("/products", {
-          params: {
-            page: pageParam,
-            limit: PAGE_SIZE,
-            isActive: true,
-            isIngredient: false,
-            ...(filter === "weighed" ? { weighted: true } : filter !== "all" ? { categoryId: filter } : {}),
-          },
-        })
-        .then((r) => r.data as Page),
+    queryFn: async ({ pageParam }) => {
+      try {
+        return (
+          await api.get("/products", {
+            params: {
+              page: pageParam,
+              limit: PAGE_SIZE,
+              isActive: true,
+              isIngredient: false,
+              ...(filter === "weighed" ? { weighted: true } : filter !== "all" ? { categoryId: filter } : {}),
+            },
+          })
+        ).data as Page;
+      } catch (error) {
+        // Без связи — плитки из каталога на планшете, одной страницей (офлайн-режим).
+        if (!isNoConnection(error)) throw error;
+        const data = listCatalog(await loadCatalog(), filter === "weighed" ? { weighted: true } : filter !== "all" ? { categoryId: filter } : {});
+        return { data, pagination: { page: 1, limit: data.length, total: data.length, totalPages: 1 } } as Page;
+      }
+    },
     getNextPageParam: (last) => (last.pagination && last.pagination.page < last.pagination.totalPages ? last.pagination.page + 1 : undefined),
   });
   const products = data?.pages.flatMap((page) => page.data) ?? [];

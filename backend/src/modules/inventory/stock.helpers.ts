@@ -86,18 +86,25 @@ export interface Reservation {
 
 // Decrement stock for tracked products with a re-check inside the transaction,
 // so two terminals can't both sell the last unit. Throws if any product is short.
+// Returns true when a sale had to take some balance below zero — possible only
+// with allowNegative (an offline sale: the goods are already gone, refusing the
+// record would only hide them from the books).
 export async function reserveStock(
   tx: Tx,
-  params: { tenantId: string; userId?: string; orderId: string; reservations: Reservation[] }
-): Promise<void> {
-  const { tenantId, userId, orderId, reservations } = params;
+  params: { tenantId: string; userId?: string; orderId: string; reservations: Reservation[]; allowNegative?: boolean }
+): Promise<boolean> {
+  const { tenantId, userId, orderId, reservations, allowNegative = false } = params;
+  let shortfall = false;
   await lockStockRows(tx, tenantId, reservations.map((r) => r.productId));
   for (const r of reservations) {
     const fresh = await tx.product.findUnique({ where: { id: r.productId } });
     if (!fresh || !hasEnough(fresh.currentStock, r.units)) {
-      throw new Error(
-        `Недостаточно товара «${fresh?.name || r.name}» на складе: осталось ${fresh ? roundStock(fresh.currentStock) : 0}${stockUnitLabel(fresh?.saleUnit)}`
-      );
+      if (!fresh || !allowNegative) {
+        throw new Error(
+          `Недостаточно товара «${fresh?.name || r.name}» на складе: осталось ${fresh ? roundStock(fresh.currentStock) : 0}${stockUnitLabel(fresh?.saleUnit)}`
+        );
+      }
+      shortfall = true;
     }
     // Written as a value, not a decrement, so it can be rounded. The row is
     // locked (lockStockRows above) and the balance re-read after the lock,
@@ -118,6 +125,7 @@ export async function reserveStock(
       },
     });
   }
+  return shortfall;
 }
 
 // Reverse of reserveStock — used when an order is cancelled.

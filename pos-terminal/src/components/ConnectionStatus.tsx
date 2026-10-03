@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { WifiOff } from "lucide-react";
-import { checkConnection, useConnection } from "../services/connection";
+import { checkConnection, offlineTooLong, useConnection } from "../services/connection";
+import { pendingCount, useOfflineQueue } from "../services/offlineQueue";
 
 // «0:42», «12:05», «1:03:20» — сколько уже нет связи.
 export function formatElapsed(ms: number): string {
@@ -22,20 +23,28 @@ function useNow(active: boolean): number {
 }
 
 /**
- * Полоса над экраном, пока нет связи (D-7). Офлайн-режима нет, поэтому главное —
- * сказать кассиру, что продажи сейчас не проходят и товар без чека отдавать
- * нельзя. floating — поверх экрана (вход, открытие смены), иначе в потоке,
- * чтобы не закрывать кнопки оплаты внизу.
+ * Полоса над экраном, пока нет связи (D-7). floating — поверх экрана (вход,
+ * открытие смены), иначе в потоке, чтобы не закрывать кнопки оплаты внизу.
+ *
+ * Касса магазина без связи продаёт за наличные (offlineSales): чеки ложатся на
+ * планшет и уходят сами, когда связь вернётся, — полоса жёлтая и говорит, что
+ * делать. Кафе и всё остальное без связи не продаёт — полоса красная. Касса,
+ * не говорившая с сервером дольше двух суток, офлайн больше не продаёт.
  */
-export function ConnectionBar({ floating = false }: { floating?: boolean }) {
+export function ConnectionBar({ floating = false, offlineSales = false }: { floating?: boolean; offlineSales?: boolean }) {
   const { problem, since, checking } = useConnection();
+  const queue = useOfflineQueue();
   const now = useNow(problem !== null);
   if (!problem) return null;
+
+  const tooLong = offlineSales && offlineTooLong(now);
+  const selling = offlineSales && !tooLong;
+  const waiting = pendingCount(queue);
 
   return (
     <div
       role="alert"
-      className={`flex flex-wrap items-center gap-x-4 gap-y-1 bg-danger-600 px-4 py-1.5 text-white ${
+      className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5 text-white ${selling ? "bg-warning-600" : "bg-danger-600"} ${
         floating ? "fixed inset-x-0 top-0 z-[60]" : "shrink-0"
       }`}
     >
@@ -45,7 +54,16 @@ export function ConnectionBar({ floating = false }: { floating?: boolean }) {
         {since !== null && <span className="ml-2 font-normal opacity-80">{formatElapsed(now - since)}</span>}
       </span>
       <span className="min-w-0 flex-1 text-sm opacity-90">
-        Продажи не проходят — не отдавайте товар, пока чек не пробит.
+        {selling ? (
+          <>
+            Продаём только за наличные — чеки сохраняются на кассе и уйдут на сервер сами, когда связь вернётся.
+            {waiting > 0 && <b className="ml-1">Ждут отправки: {waiting}.</b>}
+          </>
+        ) : tooLong ? (
+          "Касса без связи больше двух суток — продажи остановлены. Подключите интернет: чеки уйдут на сервер, и касса заработает."
+        ) : (
+          "Продажи не проходят — не отдавайте товар, пока чек не пробит."
+        )}
         {problem === "device" && " Проверьте Wi-Fi."}
       </span>
       <button

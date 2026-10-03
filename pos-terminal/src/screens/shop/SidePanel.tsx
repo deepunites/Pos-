@@ -16,11 +16,13 @@ interface SidePanelProps {
   onCustomer: () => void;
   onPay: (method: PaymentMethod) => void;
   canPay: boolean;
+  /** Нет связи: картой и по QR не платят, только наличными (офлайн-режим). */
+  offline?: boolean;
 }
 
 /** Total, the numeric keypad that feeds the scan field, and the three payment buttons. */
 export default function SidePanel(props: SidePanelProps) {
-  const { total, positions, customerName, parts, armed, onDisarm, onKey, onBackspace, onClear, onMultiply, onEnter, onCustomer, onPay, canPay } = props;
+  const { total, positions, customerName, parts, armed, onDisarm, onKey, onBackspace, onClear, onMultiply, onEnter, onCustomer, onPay, canPay, offline = false } = props;
   const { figure, symbol, suffix } = parts(total);
 
   return (
@@ -105,12 +107,12 @@ export default function SidePanel(props: SidePanelProps) {
           <span className="sh-fk">F8</span>
         </button>
         <div className="sh-alts">
-          <button className="sh-alt" onClick={() => onPay("card")} disabled={!canPay}>
+          <button className="sh-alt" onClick={() => onPay("card")} disabled={!canPay || offline} title={offline ? "Без связи — только наличные" : undefined}>
             <CreditCard className="i" />
             Карта
             <span className="sh-fk">F9</span>
           </button>
-          <button className="sh-alt" onClick={() => onPay("qr")} disabled={!canPay}>
+          <button className="sh-alt" onClick={() => onPay("qr")} disabled={!canPay || offline} title={offline ? "Без связи — только наличные" : undefined}>
             <QrCode className="i" />
             QR
             <span className="sh-fk">F10</span>

@@ -112,6 +112,10 @@ export interface Order {
   kitchenStatus?: "new" | "cooking" | "ready" | "served" | null;
   // Когда сменился кухонный шаг — по нему видно, сколько готовый заказ ждёт выдачи.
   kitchenStatusAt?: string | null;
+  // Пробит на кассе без связи (офлайн-режим магазина): когда; склад ушёл в минус; цена отличалась от каталога.
+  offlineAt?: string | null;
+  offlineShortfall?: boolean;
+  offlinePriceChanged?: boolean;
   items: OrderItem[];
   user?: { id: string; firstName: string; lastName?: string } | null;
 }
