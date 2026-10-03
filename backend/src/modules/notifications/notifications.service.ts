@@ -23,7 +23,10 @@ export const notificationsService = {
           tenantId,
           isActive: true,
           trackInventory: true,
-          currentStock: { lte: 5 },
+          // Остаток не выше минимального товара — как «Мало на складе» на
+          // дашборде и на складе. Раньше порог был общий, 5: товар в граммах
+          // попадал сюда только при 5 г, а товар с минимумом 20 шт. — при 5.
+          currentStock: { lte: prisma.product.fields.minStock },
         },
         orderBy: { currentStock: "asc" },
         take: 10,

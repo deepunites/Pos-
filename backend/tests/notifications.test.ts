@@ -59,13 +59,13 @@ describe("Notifications", () => {
 
   it("counts low stock in the product's own unit", async () => {
     const apples = await prisma.product.create({
-      data: { tenantId: testTenantId, name: "Яблоки", trackInventory: true, unit: "kg", saleUnit: "кг", currentStock: 0.3 - 0.1, sku: "104" },
+      data: { tenantId: testTenantId, name: "Яблоки", trackInventory: true, unit: "kg", saleUnit: "кг", currentStock: 0.3 - 0.1, minStock: 1, sku: "104" },
     });
     const tea = await prisma.product.create({
-      data: { tenantId: testTenantId, name: "Чай", trackInventory: true, unit: "piece", currentStock: 3 },
+      data: { tenantId: testTenantId, name: "Чай", trackInventory: true, unit: "piece", currentStock: 3, minStock: 5 },
     });
     const juice = await prisma.product.create({
-      data: { tenantId: testTenantId, name: "Сок", trackInventory: true, unit: "pack", currentStock: 4, sku: "J-1" },
+      data: { tenantId: testTenantId, name: "Сок", trackInventory: true, unit: "pack", currentStock: 4, minStock: 10, sku: "J-1" },
     });
 
     const list = await notifications();
@@ -77,10 +77,33 @@ describe("Notifications", () => {
     expect(find(list, `stock-${juice.id}`).message).toBe("Осталось 4 уп. (SKU: J-1)");
   });
 
+  it("warns when stock is down to the product's own minimum, not to a fixed 5", async () => {
+    const make = (name: string, currentStock: number, minStock: number, extra: Record<string, unknown> = {}) =>
+      prisma.product.create({ data: { tenantId: testTenantId, name, trackInventory: true, currentStock, minStock, ...extra } });
+
+    // По старому правилу «≤ 5» первые три не попали бы сюда, а «выше минимума» и
+    // «без минимума» — попали бы.
+    const below = await make("Ниже минимума", 12, 20);
+    const atMinimum = await make("На минимуме", 20, 20);
+    const grams = await make("Чай на развес", 400, 500, { saleUnit: "г" });
+    const soldOut = await make("Закончился", 0, 0);
+    const above = await make("Выше минимума", 3, 2);
+    const noMinimum = await make("Без минимума", 3, 0);
+    const untracked = await make("Без учёта", 0, 5, { trackInventory: false });
+    const archived = await make("В архиве", 0, 5, { isActive: false });
+
+    const list = await notifications();
+    const ids = list.map((n) => n.id);
+
+    expect(ids).toEqual(expect.arrayContaining([below, atMinimum, grams, soldOut].map((p) => `stock-${p.id}`)));
+    for (const p of [above, noMinimum, untracked, archived]) expect(ids).not.toContain(`stock-${p.id}`);
+    expect(find(list, `stock-${grams.id}`).message).toBe("Осталось 400 г");
+  });
+
   it("never shows another shop's orders or stock", async () => {
     const other = await prisma.tenant.create({ data: { name: "Other", slug: "other-shop", email: "o@test.com", currency: "UZS" } });
     const order = await prisma.order.create({ data: { tenantId: other.id, orderNumber: 1, total: 1000 } });
-    const product = await prisma.product.create({ data: { tenantId: other.id, name: "Чужой", trackInventory: true, currentStock: 1 } });
+    const product = await prisma.product.create({ data: { tenantId: other.id, name: "Чужой", trackInventory: true, currentStock: 1, minStock: 5 } });
 
     const ids = (await notifications()).map((n) => n.id);
 
