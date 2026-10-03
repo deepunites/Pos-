@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useOrders, useUpdateOrderStatus, useCancelOrder } from "../hooks/useOrders";
 import Badge, { statusBadge } from "../components/Badge";
+import OfflineBadges from "../components/OfflineBadges";
 import LoadingSpinner from "../components/LoadingSpinner";
 import EmptyState from "../components/EmptyState";
 import SearchInput from "../components/SearchInput";
@@ -131,6 +132,7 @@ export default function Orders() {
                         <Badge variant={order.kitchenStatus === "served" ? "gray" : "info"}>{kitchenLabels[order.kitchenStatus]}</Badge>
                       )}
                       <Badge variant="gray">{order.type === "dine_in" ? "Зал" : order.type === "takeaway" ? "Навынос" : order.type}</Badge>
+                      <OfflineBadges order={order} />
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
                       <span>{order.items?.length || 0} поз.</span>
