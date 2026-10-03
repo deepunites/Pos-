@@ -7,6 +7,7 @@
 - **Сайт:** [www.qwik.uz](https://www.qwik.uz)
 - **Панель управления:** [admin.qwik.uz](https://admin.qwik.uz)
 - **Касса:** [pos.qwik.uz](https://pos.qwik.uz)
+- **API для разработчиков:** [docs/API.md](docs/API.md)
 
 ---
 
