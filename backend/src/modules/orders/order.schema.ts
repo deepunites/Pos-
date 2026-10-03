@@ -37,12 +37,27 @@ export const OFFLINE_SALE_MAX_AGE_DAYS = 30;
 export const checkoutSchema = createOrderSchema
   .extend({
     expectedTotal: z.number().min(0),
-    payment: z.object({
-      method: z.enum(["cash", "card", "qr", "online", "gift_card"]),
-      tipAmount: z.number().min(0).optional(),
-      transactionId: z.string().optional(),
-      cardLastFour: z.string().length(4).optional(),
-    }),
+    // Одна оплата на весь чек — или `payments`, части разными способами
+    // («Карта + наличные»: 40 000 картой и 20 000 наличными). Ровно одно из двух.
+    // Старое `payment` остаётся: так приходят чеки из офлайн-очередей касс.
+    payment: z
+      .object({
+        method: z.enum(["cash", "card", "qr", "online", "gift_card"]),
+        tipAmount: z.number().min(0).optional(),
+        transactionId: z.string().optional(),
+        cardLastFour: z.string().length(4).optional(),
+      })
+      .optional(),
+    payments: z
+      .array(
+        z.object({
+          method: z.enum(["cash", "card", "qr"]),
+          amount: z.number().positive("Часть оплаты должна быть больше нуля"),
+        })
+      )
+      .min(1)
+      .max(3)
+      .optional(),
     // Офлайн-режим кассы: продажа пробита без связи и дошла сюда позже. Деньги
     // уже взяты, поэтому сервер с кассой не спорит: цена — та, по которой
     // продали (unitPrice строки), остатка может не хватить (склад уходит в
@@ -57,9 +72,14 @@ export const checkoutSchema = createOrderSchema
       .optional(),
   })
   .superRefine((data, ctx) => {
+    if (!data.payment === !data.payments) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payment"], message: "Укажите оплату: один способ или части оплаты" });
+      return;
+    }
     if (!data.offline) return;
-    if (data.payment.method !== "cash") {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payment", "method"], message: "Без связи принимаются только наличные" });
+    const methods = data.payments ? data.payments.map((p) => p.method) : [data.payment!.method];
+    if (methods.some((method) => method !== "cash")) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [data.payments ? "payments" : "payment"], message: "Без связи принимаются только наличные" });
     }
     if (data.items.some((item) => item.unitPrice === undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["items"], message: "В офлайн-продаже у каждой строки должна быть цена, по которой продали" });

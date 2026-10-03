@@ -334,6 +334,43 @@
 .sh-field .sh-phone input { flex: 1; min-width: 0; border-radius: 0 4px 4px 0; letter-spacing: 0.02em; }
 .sh-phone:focus-within b { border-color: var(--accent); }
 .sh-field-err { display: block; margin-top: 6px; font-size: 13px; font-style: normal; color: var(--red); }
+
+/* Оплата — в правой панели, а не во всплывающем окне: чек слева виден,
+   клавиатура и зелёная кнопка — на тех же местах. */
+.sh-pp { gap: 10px; }
+.sh-pp-head { display: flex; align-items: center; justify-content: space-between; flex: none; }
+.sh-pp-back { display: inline-flex; align-items: center; gap: 6px; height: 32px; color: var(--muted); font-size: 14px; font-weight: 500; }
+.sh-pp-back:hover:not(:disabled) { color: var(--ink); }
+.sh-pp-back .i, .sh-pp-head .m .i { width: 16px; height: 16px; }
+.sh-pp-head .m { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--accent); }
+.sh-pp-total { display: flex; justify-content: space-between; align-items: baseline; flex: none; }
+.sh-pp-total .lbl, .sh-pp-box .lbl { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.sh-pp-total .v { font-weight: 600; font-size: 48px; line-height: 1; letter-spacing: -0.02em; }
+.sh-pp-total .v small, .sh-pp-box .v small { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.sh-pp-box { flex: none; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); padding: 8px 14px; }
+.sh-pp-box.act { border: 2px solid var(--accent); background: var(--card); padding: 7px 13px; }
+.sh-pp-box .lbl { display: flex; align-items: center; gap: 6px; }
+.sh-pp-box .lbl .i { width: 14px; height: 14px; }
+.sh-pp-box .v { font-weight: 600; font-size: 36px; line-height: 1.1; text-align: right; }
+.sh-pp-box .v.ph { color: var(--faint); }
+.sh-pp-box.chg { border-color: var(--pay); }
+.sh-pp-box.chg .v { color: var(--pay); }
+.sh-pp-box.short { border-color: var(--red); background: var(--red-soft); }
+.sh-pp-box.short .v { color: var(--red); }
+.sh-pp .sh-kp { flex: none; }
+.sh-pp .sh-kp button { height: 52px; }
+.sh-pp-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; flex: none; }
+.sh-pp-quick button { display: flex; align-items: center; justify-content: center; height: 46px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); font-weight: 600; font-size: 14px; white-space: nowrap; }
+.sh-pp-quick button:hover { border-color: var(--accent); }
+.sh-pp-quick button.on { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent-hi); }
+.sh-pp-card { flex: 1; min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; text-align: center; border: 1px dashed var(--line); border-radius: 4px; color: var(--muted); font-size: 15px; line-height: 1.45; }
+.sh-pp-card .i { width: 48px; height: 48px; color: var(--accent); }
+.sh-pp-card b { color: var(--ink); font-weight: 600; }
+.sh-pp-note { flex: none; padding: 8px 12px; border-radius: 4px; background: var(--amber-soft); color: var(--amber-ink); font-size: 13px; }
+.sh-pp-ok { width: 100%; height: 72px; display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 4px; background: var(--pay); color: var(--on-accent); font-size: 20px; font-weight: 700; }
+.sh-pp-ok:hover:not(:disabled) { background: var(--pay-hi); }
+.sh-pp-ok:disabled { opacity: 0.45; }
+.sh-pp-ok .i { width: 24px; height: 24px; }
 .sh-loading { flex: 1; display: flex; align-items: center; justify-content: center; }
 .sh-spin { width: 18px; height: 18px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

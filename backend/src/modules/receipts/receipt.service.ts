@@ -293,6 +293,13 @@ export class ReceiptService {
   </div>
 
   <div class="info" style="margin-top: 8px;">
+    ${(order.payments?.length ?? 0) > 1
+      ? // Оплата частями («Карта + наличные») — каждая часть своей строкой.
+        `<div class="info-row"><span>Оплата:</span><span>частями</span></div>` +
+        order.payments
+          .map((p) => `<div class="info-row"><span>${escapeHtml(PAYMENT_LABELS[p.method] ?? p.method)}:</span><span>${money(p.amount)}</span></div>`)
+          .join("")
+      : `
     <div class="info-row">
       <span>Оплата:</span>
       <span>${paymentMethod}</span>
@@ -302,7 +309,7 @@ export class ReceiptService {
       <span>Сумма оплаты:</span>
       <span>${money(order.payments[0].amount)}</span>
     </div>
-    ` : ""}
+    ` : ""}`}
   </div>
 
   <div class="footer">
