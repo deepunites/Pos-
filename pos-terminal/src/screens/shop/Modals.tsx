@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { PauseCircle, Trash2, X } from "lucide-react";
 import type { ParkedCheck } from "../../store/cartStore";
+import { UZ_PREFIX, formatLocal, fullPhone, localDigits } from "../../utils/phone";
 
 /** Escape closes any of these windows; the register's global keys are off while one is open. */
 export function useEscape(onClose: () => void): void {
@@ -87,7 +88,9 @@ interface CustomerModalProps {
 export function CustomerModal({ name = "", phone = "", onSave, onClose }: CustomerModalProps) {
   useEscape(onClose);
   const [n, setN] = useState(name);
-  const [p, setP] = useState(phone);
+  // Только девять цифр после +998: код страны касса ставит сама.
+  const [p, setP] = useState(() => localDigits(phone));
+  const [unfinished, setUnfinished] = useState(false);
   return (
     <div className="sh-scrim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
@@ -96,7 +99,9 @@ export function CustomerModal({ name = "", phone = "", onSave, onClose }: Custom
         aria-label="Клиент"
         onSubmit={(e) => {
           e.preventDefault();
-          onSave(n.trim() || undefined, p.trim() || undefined);
+          const full = fullPhone(p);
+          if (full === null) return setUnfinished(true);
+          onSave(n.trim() || undefined, full);
         }}
       >
         <div className="sh-mh">
@@ -114,7 +119,22 @@ export function CustomerModal({ name = "", phone = "", onSave, onClose }: Custom
         </label>
         <label className="sh-field">
           <span>Телефон</span>
-          <input value={p} onChange={(e) => setP(e.target.value)} type="tel" inputMode="tel" />
+          <div className="sh-phone">
+            <b>{UZ_PREFIX}</b>
+            <input
+              value={formatLocal(p)}
+              onChange={(e) => {
+                setP(localDigits(e.target.value));
+                setUnfinished(false);
+              }}
+              type="tel"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="90 123-45-67"
+              aria-invalid={unfinished}
+            />
+          </div>
+          {unfinished && <em className="sh-field-err">Допишите номер: после +998 нужно 9 цифр</em>}
         </label>
         <div className="sh-ma">
           <button type="button" className="cancel" onClick={() => onSave(undefined, undefined)}>
