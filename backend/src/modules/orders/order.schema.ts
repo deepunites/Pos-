@@ -3,8 +3,8 @@ import { limitQuery, pageQuery } from "../common.schema.js";
 
 // Prices are never taken from the client. For weighted products (sold by
 // gram) the client sends the portion weight in `grams`; the server prices it as
-// rate × grams. `unitPrice` is accepted only for backwards compatibility and
-// is ignored.
+// rate × grams. `unitPrice` is ignored — except in an offline sale (see
+// checkoutSchema.offline), where it is the price the customer already paid.
 const orderItemSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().min(1),
@@ -26,19 +26,53 @@ export const createOrderSchema = z.object({
   discountAmount: z.number().min(0).optional(),
 });
 
+// Касса продаёт без связи не дольше двух суток, но чек может дойти и позже
+// (планшет лежал выключенным). Дальше — уже не задержка, а мусор.
+export const OFFLINE_SALE_MAX_AGE_DAYS = 30;
+
 // One-shot sale from the terminal: order + full payment in a single
 // transaction. `expectedTotal` is what the cashier saw and collected; if the
 // server's price differs, the whole thing is rejected (409) rather than
 // accepting an underpayment.
-export const checkoutSchema = createOrderSchema.extend({
-  expectedTotal: z.number().min(0),
-  payment: z.object({
-    method: z.enum(["cash", "card", "qr", "online", "gift_card"]),
-    tipAmount: z.number().min(0).optional(),
-    transactionId: z.string().optional(),
-    cardLastFour: z.string().length(4).optional(),
-  }),
-});
+export const checkoutSchema = createOrderSchema
+  .extend({
+    expectedTotal: z.number().min(0),
+    payment: z.object({
+      method: z.enum(["cash", "card", "qr", "online", "gift_card"]),
+      tipAmount: z.number().min(0).optional(),
+      transactionId: z.string().optional(),
+      cardLastFour: z.string().length(4).optional(),
+    }),
+    // Офлайн-режим кассы: продажа пробита без связи и дошла сюда позже. Деньги
+    // уже взяты, поэтому сервер с кассой не спорит: цена — та, по которой
+    // продали (unitPrice строки), остатка может не хватить (склад уходит в
+    // минус, заказ помечается), смена может быть уже закрыта, товар — снят с
+    // продажи. Только наличные: картой и по QR без связи не платят.
+    offline: z
+      .object({
+        soldAt: z.coerce.date(),
+        // Кто пробил: чек может дойти, когда на кассе вошёл уже другой кассир.
+        cashierId: z.string().uuid().optional(),
+      })
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.offline) return;
+    if (data.payment.method !== "cash") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payment", "method"], message: "Без связи принимаются только наличные" });
+    }
+    if (data.items.some((item) => item.unitPrice === undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["items"], message: "В офлайн-продаже у каждой строки должна быть цена, по которой продали" });
+    }
+    const now = Date.now();
+    const soldAt = data.offline.soldAt.getTime();
+    if (soldAt > now + 5 * 60_000) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["offline", "soldAt"], message: "Время продажи в будущем — проверьте часы на кассе" });
+    }
+    if (soldAt < now - OFFLINE_SALE_MAX_AGE_DAYS * 24 * 3600_000) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["offline", "soldAt"], message: `Офлайн-продажа старше ${OFFLINE_SALE_MAX_AGE_DAYS} дней не принимается` });
+    }
+  });
 
 // Отмены здесь нет: она возвращает резерв на склад и освобождает стол, а простая
 // смена статуса этого не делает. Отменяют через POST /orders/:id/cancel.

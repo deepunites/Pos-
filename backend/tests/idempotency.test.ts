@@ -146,14 +146,19 @@ describe("Idempotency-Key", () => {
     expect(res.status).toBe(400);
   });
 
-  it("forgets keys after a day", async () => {
+  // Неделя, а не сутки: чек, пробитый без связи, может дойти через несколько
+  // дней (офлайн-режим кассы), и его повтор должен узнать записанную продажу.
+  it("remembers keys for a week, then forgets them", async () => {
     const p = await product(10);
     const key = newKey();
     expect((await send("/orders/checkout", sale(p.id), key)).status).toBe(201);
+
     await prisma.idempotencyKey.updateMany({ where: { key }, data: { createdAt: new Date(Date.now() - 25 * 3600 * 1000) } });
-
     await purgeIdempotencyKeys();
+    expect(await prisma.idempotencyKey.count({ where: { key } })).toBe(1);
 
+    await prisma.idempotencyKey.updateMany({ where: { key }, data: { createdAt: new Date(Date.now() - 8 * 24 * 3600 * 1000) } });
+    await purgeIdempotencyKeys();
     expect(await prisma.idempotencyKey.count({ where: { key } })).toBe(0);
   });
 });

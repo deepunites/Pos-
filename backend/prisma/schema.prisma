@@ -292,6 +292,14 @@ model Order {
   // пока его приготовят.
   kitchenStatus     String?   @map("kitchen_status")
   kitchenStatusAt   DateTime? @map("kitchen_status_at")
+  // Офлайн-режим кассы: продажа пробита без связи и дошла до сервера позже.
+  // offlineAt — когда её пробили на кассе (createdAt тоже ставится на это
+  // время, чтобы отчёты по дням и часам были верными). Флаги — что было не
+  // так, когда она дошла: остатка не хватило (склад ушёл в минус) или цена на
+  // сервере к тому времени была другой (взяли по цене кассы).
+  offlineAt           DateTime? @map("offline_at")
+  offlineShortfall    Boolean   @default(false) @map("offline_shortfall")
+  offlinePriceChanged Boolean   @default(false) @map("offline_price_changed")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 

@@ -27,6 +27,12 @@ import { lockOrder } from "./order.locks.js";
 // Сколько часов заказ может висеть на экране кухни, пока его не выдали.
 export const KITCHEN_WINDOW_HOURS = 12;
 
+// The offline part of a checkout (checkoutSchema.offline).
+export interface OfflineSale {
+  soldAt: Date;
+  cashierId?: string;
+}
+
 export class OrderTotalChangedError extends Error {
   constructor(public readonly actualTotal: number) {
     super("Сумма заказа изменилась — цены обновлены, проверьте корзину");
@@ -121,14 +127,19 @@ export class OrderService {
 
   // Prices every line from the current product record (never from the client),
   // builds the nested-create payload and the list of stock reservations.
-  private async priceItems(tx: Tx, tenantId: string, items: CreateOrderInput["items"]) {
+  // An offline sale (see checkoutSchema.offline) is the exception: the money is
+  // already taken, so each line keeps the price the customer paid, a product
+  // taken off sale since is still accepted, and a short balance is not refused
+  // here — reserveStock lets it go below zero and the order is marked.
+  private async priceItems(tx: Tx, tenantId: string, items: CreateOrderInput["items"], offline = false) {
     let subtotal = 0;
+    let priceChanged = false;
     const orderItems: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] = [];
     const reserved = new Map<string, Reservation>();
 
     for (const item of items) {
       const product = await tx.product.findFirst({
-        where: { id: item.productId, tenantId, isActive: true },
+        where: { id: item.productId, tenantId, ...(offline ? {} : { isActive: true }) },
       });
       if (!product) throw new NotFoundError(`Товар ${item.productId} не найден`);
 
@@ -140,7 +151,12 @@ export class OrderService {
         throw new Error(`Для весового товара «${product.name}» не указан вес`);
       }
       const weightGrams = isWeighted ? item.grams! : null;
-      const unitPrice = isWeighted ? round2((product.price * weightGrams!) / perUnit!) : product.price;
+      const serverPrice = isWeighted ? round2((product.price * weightGrams!) / perUnit!) : product.price;
+      let unitPrice = serverPrice;
+      if (offline && item.unitPrice !== undefined) {
+        unitPrice = round2(item.unitPrice);
+        if (Math.abs(unitPrice - serverPrice) > 0.005) priceChanged = true;
+      }
 
       let itemTotal = unitPrice * item.quantity;
 
@@ -172,7 +188,7 @@ export class OrderService {
         const prev = reserved.get(product.id);
         reserved.set(product.id, { productId: product.id, name: product.name, units: (prev?.units || 0) + units });
         // Early, friendlier check; the authoritative one happens in reserveStock.
-        if (!hasEnough(product.currentStock, reserved.get(product.id)!.units)) {
+        if (!offline && !hasEnough(product.currentStock, reserved.get(product.id)!.units)) {
           throw new Error(`Недостаточно товара «${product.name}» на складе: осталось ${roundStock(product.currentStock)}${stockUnitLabel(product.saleUnit)}`);
         }
       }
@@ -188,13 +204,13 @@ export class OrderService {
       });
     }
 
-    return { orderItems, subtotal: round2(subtotal), reservations: Array.from(reserved.values()) };
+    return { orderItems, subtotal: round2(subtotal), reservations: Array.from(reserved.values()), priceChanged };
   }
 
   // Creates the order row, then reserves stock against it — all on the caller's
   // transaction. The order number comes from the per-tenant counter
   // (nextOrderNumber), so two orders created at the same instant can't share one.
-  private async createOrderInTx(tx: Tx, tenantId: string, userId: string, data: CreateOrderInput, status: string) {
+  private async createOrderInTx(tx: Tx, tenantId: string, userId: string, data: CreateOrderInput, status: string, offline?: OfflineSale) {
     // Referenced rows must belong to the caller's tenant.
     if (data.tableId) {
       const table = await tx.table.findFirst({ where: { id: data.tableId, tenantId } });
@@ -205,11 +221,19 @@ export class OrderService {
       if (!branch) throw new NotFoundError("Филиал не найден");
     }
     if (data.cashShiftId) {
-      const shift = await tx.cashShift.findFirst({ where: { id: data.cashShiftId, tenantId, status: "open" } });
-      if (!shift) throw new NotFoundError("Открытая смена не найдена");
+      // Офлайн-чек принадлежит смене, в которую его пробили, даже если её уже закрыли.
+      const shift = await tx.cashShift.findFirst({ where: { id: data.cashShiftId, tenantId, ...(offline ? {} : { status: "open" }) } });
+      if (!shift) throw new NotFoundError(offline ? "Смена не найдена" : "Открытая смена не найдена");
     }
+    let sellerId = userId;
+    if (offline?.cashierId) {
+      const cashier = await tx.user.findFirst({ where: { id: offline.cashierId, tenantId }, select: { id: true } });
+      if (!cashier) throw new NotFoundError("Кассир не найден");
+      sellerId = cashier.id;
+    }
+    const at = offline ? offline.soldAt : new Date();
 
-    const { orderItems, subtotal, reservations } = await this.priceItems(tx, tenantId, data.items);
+    const { orderItems, subtotal, reservations, priceChanged } = await this.priceItems(tx, tenantId, data.items, Boolean(offline));
     const discountAmount = Math.min(data.discountAmount || 0, subtotal);
     const total = round2(subtotal - discountAmount);
 
@@ -239,7 +263,7 @@ export class OrderService {
     const created = await tx.order.create({
       data: {
         tenantId,
-        userId,
+        userId: sellerId,
         branchId: data.branchId,
         tableId: data.tableId,
         cashShiftId: data.cashShiftId,
@@ -253,15 +277,18 @@ export class OrderService {
         customerName: data.customerName,
         customerPhone: data.customerPhone,
         notes: data.notes,
-        completedAt: status === "completed" ? new Date() : null,
+        completedAt: status === "completed" ? at : null,
         kitchenStatus: toKitchen ? "new" : null,
-        kitchenStatusAt: toKitchen ? new Date() : null,
+        kitchenStatusAt: toKitchen ? at : null,
         items: { create: orderItems },
+        ...(offline ? { createdAt: at, offlineAt: at, offlinePriceChanged: priceChanged } : {}),
       },
     });
 
-    await reserveStock(tx, { tenantId, userId, orderId: created.id, reservations });
-
+    const shortfall = await reserveStock(tx, { tenantId, userId: sellerId, orderId: created.id, reservations, allowNegative: Boolean(offline) });
+    if (shortfall) {
+      return tx.order.update({ where: { id: created.id }, data: { offlineShortfall: true } });
+    }
     return created;
   }
 
@@ -293,9 +320,12 @@ export class OrderService {
   async checkout(tenantId: string, userId: string, data: CheckoutInput, idem?: IdempotencyContext | null) {
     const created = await inTransaction(async (tx) => {
       await claimIdempotencyKey(tx, tenantId, idem);
-      const row = await this.createOrderInTx(tx, tenantId, userId, data, "completed");
+      const row = await this.createOrderInTx(tx, tenantId, userId, data, "completed", data.offline);
 
       if (Math.abs(row.total - data.expectedTotal) > 0.01) {
+        // Офлайн-чек посчитан по ценам самой кассы — расхождение значит, что
+        // строки и итог в запросе не сходятся, а не что цены изменились.
+        if (data.offline) throw new AppError("Сумма офлайн-чека не сходится с его строками");
         throw new OrderTotalChangedError(row.total);
       }
 
@@ -309,11 +339,11 @@ export class OrderService {
           transactionId: data.payment.transactionId,
           cardLastFour: data.payment.cardLastFour,
           status: "completed",
-          processedAt: new Date(),
+          processedAt: data.offline ? data.offline.soldAt : new Date(),
         },
       });
 
-      await deductTechCardIngredients(tx, { tenantId, userId, orderId: row.id });
+      await deductTechCardIngredients(tx, { tenantId, userId: row.userId ?? userId, orderId: row.id });
       await attachIdempotencyResource(tx, tenantId, idem, row.id);
 
       return row;

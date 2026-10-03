@@ -29,7 +29,9 @@ export interface IdempotencyContext {
   requestHash: string;
 }
 
-export const IDEMPOTENCY_TTL_HOURS = 24;
+// Неделя: чек, пробитый без связи, может дойти через несколько дней (офлайн-
+// режим кассы), и его повтор должен узнать уже записанную продажу.
+export const IDEMPOTENCY_TTL_HOURS = 7 * 24;
 
 const KEY_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/;
 
