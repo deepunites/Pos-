@@ -123,3 +123,61 @@ test("card + cash: the cashier types the card part, the cash part counts itself"
   expect(after.totalCardSales - before.totalCardSales).toBe(20000);
   expect(after.totalCashSales - before.totalCashSales).toBe(11500);
 });
+
+test("on credit: a new customer pays part now, the rest goes to the debt and is paid back at the register", async ({ page }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("например, my-shop").fill("demo-market");
+  await page.getByRole("button", { name: "Продолжить" }).click();
+  await page.getByText("Азиза Р.").click();
+  await pressPin(page, "1234");
+  const openShift = page.getByRole("button", { name: "Открыть смену" });
+  await expect(page.getByText(/Сканер готов|Открытие смены/).first()).toBeVisible();
+  if (await openShift.isVisible()) {
+    await page.getByRole("button", { name: "50К" }).click();
+    await openShift.click();
+  }
+  const before = await api<{ totalDebtSales: number; totalDebtRepaidCash: number; totalCashSales: number }>(page, "/cash-shifts/current", "cashier");
+
+  const scan = page.getByPlaceholder("Штрихкод, код или название товара");
+  await scan.fill(`2*${MILK}`);
+  await scan.press("Enter");
+  await page.getByText("Хлеб «Нон» белый").first().click();
+  await expect(page.getByText(/31\s500\s*сўм/).first()).toBeVisible();
+
+  // F11 — «В долг»: клиента нет в списке — добавляем прямо отсюда.
+  await page.keyboard.press("F11");
+  await page.getByRole("button", { name: "Добавить клиента" }).click();
+  const dialog = page.getByRole("dialog", { name: "Новый клиент" });
+  await dialog.getByRole("textbox").first().fill("Алишер");
+  await dialog.getByPlaceholder("90 123-45-67").first().fill("901234567");
+  await dialog.getByRole("button", { name: "Сохранить и выбрать" }).click();
+  await expect(page.getByText("Алишер").first()).toBeVisible();
+
+  // Сейчас 11 500 наличными, остальное — в долг.
+  await page.keyboard.type("11500");
+  await page.getByRole("button", { name: /^Записать: / }).click();
+  await expect(page.getByText(/в долг 20\s000/).first()).toBeVisible();
+
+  const [order] = await api<{ total: number; customerName: string; payments: { method: string; amount: number }[] }[]>(page, "/orders?limit=1");
+  expect(order.customerName).toBe("Алишер");
+  expect(order.payments.map((p) => [p.method, p.amount]).sort()).toEqual([
+    ["cash", 11500],
+    ["debt", 20000],
+  ]);
+  const [customer] = await api<{ id: string; debtBalance: number }[]>(page, "/customers?search=1234567");
+  expect(customer.debtBalance).toBe(20000);
+
+  // Клиент принёс деньги: «Долги» → клиент → «Весь долг» наличными.
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Долги" }).click();
+  await page.getByRole("option", { name: /Алишер/ }).click();
+  await page.getByRole("button", { name: /^Принять / }).click();
+  await expect(page.getByText(/принято 20\s000/)).toBeVisible();
+
+  const [paid] = await api<{ debtBalance: number }[]>(page, "/customers?search=1234567");
+  expect(paid.debtBalance).toBe(0);
+  const after = await api<{ totalDebtSales: number; totalDebtRepaidCash: number; totalCashSales: number }>(page, "/cash-shifts/current", "cashier");
+  expect(after.totalDebtSales - before.totalDebtSales).toBe(20000);
+  expect(after.totalCashSales - before.totalCashSales).toBe(11500);
+  expect(after.totalDebtRepaidCash - before.totalDebtRepaidCash).toBe(20000);
+});

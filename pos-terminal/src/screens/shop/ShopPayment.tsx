@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Banknote, Check, CreditCard, Delete, QrCode, WalletCards } from "lucide-react";
+import { ArrowLeft, Banknote, Check, CreditCard, Delete, NotebookPen, QrCode, WalletCards, X } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import { useCartStore } from "../../store/cartStore";
@@ -14,9 +14,12 @@ import { offlineTooLong, useConnection } from "../../services/connection";
 import { enqueueSale, stockUnits, type QueuedSale } from "../../services/offlineQueue";
 import { takeFromCatalog } from "../../services/offlineCatalog";
 import { sessionClaims } from "../../services/session";
+import CustomerPicker from "./CustomerPicker";
+import NewCustomerModal from "./NewCustomerModal";
+import { LABEL_TEXT, fullName, initials, showPhone, stars, type Customer } from "./customers";
 
-/** Как платит покупатель. `mixed` — часть картой, остаток наличными. */
-export type PayMode = "cash" | "card" | "mixed" | "qr";
+/** Как платит покупатель. `mixed` — часть картой, остаток наличными; `debt` — в долг клиенту (можно частично). */
+export type PayMode = "cash" | "card" | "mixed" | "debt" | "qr";
 
 export interface SaleResult {
   order: Order;
@@ -29,6 +32,10 @@ export interface SaleResult {
   change: number;
   /** «Карта + наличные»: сколько прошло картой (остальное — наличными). */
   cardAmount?: number;
+  /** «В долг»: сколько записано в долг, кому и каким стал его долг. */
+  debtAmount?: number;
+  customerName?: string;
+  customerDebt?: number;
 }
 
 interface ShopPaymentProps {
@@ -44,6 +51,7 @@ const PAY_MODES: Record<PayMode, { label: string; icon: typeof Banknote }> = {
   cash: { label: "Наличные", icon: Banknote },
   card: { label: "Карта", icon: CreditCard },
   mixed: { label: "Карта + наличные", icon: WalletCards },
+  debt: { label: "В долг", icon: NotebookPen },
   qr: { label: "QR", icon: QrCode },
 };
 
@@ -73,10 +81,15 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
   const qc = useQueryClient();
   const { customerName, customerPhone } = useCartStore();
   const [text, setText] = useState("");
+  // «В долг»: клиент выбирается здесь же; часть можно заплатить сразу.
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [nowMethod, setNowMethod] = useState<"cash" | "card">("cash");
+  const [addingCustomer, setAddingCustomer] = useState(false);
 
   const cash = mode === "cash";
   const mixed = mode === "mixed";
-  const typing = cash || mixed;
+  const debt = mode === "debt";
+  const typing = cash || mixed || (debt && customer !== null);
 
   const entered = text ? parseDecimal(text) : null;
   // Наличные: что дал покупатель (пусто — без сдачи).
@@ -87,6 +100,10 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
   const cardPart = mixed ? round2(entered ?? 0) : 0;
   const cashPart = mixed ? round2(total - cardPart) : 0;
   const splitOk = !mixed || (cardPart > 0 && cashPart > 0);
+  // «В долг»: платит сейчас — сколько набрали, в долг — остаток.
+  const paidNow = debt && customer ? round2(entered ?? 0) : 0;
+  const debtPart = debt ? round2(total - paidNow) : 0;
+  const debtOk = !debt || (customer !== null && debtPart > 0);
 
   const offlineNow = useConnection((s) => s.problem !== null);
 
@@ -105,7 +122,12 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
         expectedTotal: total,
         ...(mixed
           ? { payments: [{ method: "card", amount: cardPart }, { method: "cash", amount: cashPart }] }
-          : { payment: { method: mode } }),
+          : debt
+            ? {
+                customerId: customer!.id,
+                payments: [{ method: "debt", amount: debtPart }, ...(paidNow > 0 ? [{ method: nowMethod, amount: paidNow }] : [])],
+              }
+            : { payment: { method: mode } }),
       };
 
       // Офлайн-режим: без связи — только наличные, и чек ложится на планшет.
@@ -154,7 +176,16 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
       for (const key of ["shop-tiles", "shop-quick", "shop-suggest", "cash-shift"]) qc.invalidateQueries({ queryKey: [key] });
       useCartStore.getState().clearCart();
       const shown = order ?? ({ id: offline!.id, orderNumber: "", total } as unknown as Order);
-      onPaid({ order: shown, offline, method: mode, total, tendered, change, ...(mixed ? { cardAmount: cardPart } : {}) });
+      onPaid({
+        order: shown,
+        offline,
+        method: mode,
+        total,
+        tendered,
+        change,
+        ...(mixed ? { cardAmount: cardPart } : {}),
+        ...(debt && customer ? { debtAmount: debtPart, customerName: fullName(customer), customerDebt: round2(customer.debtBalance + debtPart) } : {}),
+      });
     },
     onError: async (error: Error & { response?: { status?: number; data?: { error?: string } } }) => {
       if (error instanceof OfflineRefused) {
@@ -178,7 +209,7 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
     },
   });
 
-  const canConfirm = !checkout.isPending && !short && splitOk;
+  const canConfirm = !checkout.isPending && !short && splitOk && debtOk;
   const confirm = useCallback(() => {
     if (canConfirm) checkout.mutate();
   }, [canConfirm, checkout]);
@@ -202,6 +233,7 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (addingCustomer) return; // клавиши — окну нового клиента
       if (typing && /^\d$/.test(e.key)) press(e.key);
       else if (typing && (e.key === "," || e.key === ".")) press(",");
       else if (typing && e.key === "Backspace") setText((c) => c.slice(0, -1));
@@ -213,7 +245,7 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [typing, press, confirm, onClose, checkout.isPending]);
+  }, [typing, press, confirm, onClose, checkout.isPending, addingCustomer]);
 
   const suggestions = useMemo(() => (cash ? cashSuggestions(total, fractionDigits) : []), [cash, total, fractionDigits]);
   const { label, icon: Icon } = PAY_MODES[mode];
@@ -244,15 +276,25 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
     </div>
   );
 
+  // Числа без «сўм» — иначе надпись на кнопке не влезает в строку.
+  const fig = (n: number) => parts(n).figure;
   const okLabel = cash
     ? short
       ? `Не хватает ${money(total - (tendered ?? 0))}`
       : "Оплатить"
     : mixed
       ? splitOk
-        ? `Оплатить · ${money(cardPart)} + ${money(cashPart)}`
+        ? `Оплатить · ${fig(cardPart)} + ${fig(cashPart)}`
         : "Введите сумму картой"
-      : `Оплачено · ${money(total)}`;
+      : debt
+        ? !customer
+          ? "Выберите клиента"
+          : debtPart <= 0
+            ? "Это вся сумма — без долга"
+            : paidNow > 0
+              ? `Записать: ${fig(paidNow)} + ${fig(debtPart)} в долг`
+              : `Записать в долг · ${money(total)}`
+        : `Оплачено · ${money(total)}`;
 
   return (
     <aside className="sh-side sh-pp" aria-label={`Оплата: ${label}`}>
@@ -341,6 +383,78 @@ export default function ShopPayment({ mode, total, shiftId, onClose, onPaid }: S
           </div>
           {keypad}
         </>
+      )}
+
+      {debt && !customer && (
+        <>
+          <div className="sh-pp-box debt">
+            <div className="lbl">Запишем в долг</div>
+            {amount(total)}
+          </div>
+          <CustomerPicker onPick={setCustomer} onAdd={() => setAddingCustomer(true)} />
+        </>
+      )}
+
+      {debt && customer && (
+        <>
+          <div className="sh-cu-chosen">
+            <span className={`sh-cu-av ${customer.label}`}>{initials(customer)}</span>
+            <span className="t">
+              <b>{fullName(customer)}</b>
+              <span>
+                {customer.rating ? <em className="sh-cu-stars">{stars(customer.rating)}</em> : null}
+                <span className={`sh-cu-tag ${customer.label}`}>{LABEL_TEXT[customer.label]}</span>
+                {showPhone(customer.phone)}
+              </span>
+            </span>
+            <span className="d">
+              <small>долг станет</small>
+              <b className="tab">{money(round2(customer.debtBalance + Math.max(0, debtPart)))}</b>
+            </span>
+            <button
+              className="sh-cu-x"
+              onClick={() => {
+                setCustomer(null);
+                setText("");
+              }}
+              aria-label="Другой клиент"
+              title="Другой клиент"
+            >
+              <X className="i" />
+            </button>
+          </div>
+          <div className="sh-pp-seg">
+            <button className={nowMethod === "cash" ? "on" : ""} onClick={() => setNowMethod("cash")}>
+              <Banknote className="i" />
+              Наличными
+            </button>
+            <button className={nowMethod === "card" ? "on" : ""} onClick={() => setNowMethod("card")}>
+              <CreditCard className="i" />
+              Картой
+            </button>
+          </div>
+          <div className="sh-pp-two">
+            <div className="sh-pp-box act">
+              <div className="lbl">Платит сейчас</div>
+              {amount(paidNow, text === "")}
+            </div>
+            <div className="sh-pp-box debt">
+              <div className="lbl">В долг — сам</div>
+              {amount(Math.max(0, debtPart))}
+            </div>
+          </div>
+          {keypad}
+        </>
+      )}
+
+      {addingCustomer && (
+        <NewCustomerModal
+          onCreated={(created) => {
+            setAddingCustomer(false);
+            setCustomer(created);
+          }}
+          onClose={() => setAddingCustomer(false)}
+        />
       )}
 
       <div className="sh-pay">
