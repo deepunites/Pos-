@@ -244,6 +244,22 @@ export class ProductService {
     });
   }
 
+  /**
+   * Последняя поставка каждого товара: цена, дата, поставщик — подсказка в
+   * форме товара и в строке прихода («посл.: 11 000 · 28 сен»).
+   */
+  async lastSupply(tenantId: string, ids: string[]) {
+    const rows = await prisma.$queryRaw<{ product_id: string; cost_price: number; created_at: Date; supplier_name: string | null }[]>`
+      SELECT DISTINCT ON (i.product_id) i.product_id, i.cost_price, r.created_at, r.supplier_name
+      FROM stock_receipt_items i
+      JOIN stock_receipts r ON r.id = i.receipt_id
+      WHERE r.tenant_id = ${tenantId} AND i.product_id = ANY(${ids}::text[])
+      ORDER BY i.product_id, r.created_at DESC`;
+    return Object.fromEntries(
+      rows.map((r) => [r.product_id, { costPrice: r.cost_price, date: r.created_at, supplierName: r.supplier_name }])
+    );
+  }
+
   async delete(tenantId: string, id: string) {
     const product = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!product) throw new NotFoundError("Товар не найден");
