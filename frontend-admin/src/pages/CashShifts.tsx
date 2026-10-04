@@ -18,6 +18,9 @@ interface CashShift {
   totalCashSales: number;
   totalCardSales: number;
   totalQrSales: number;
+  totalDebtSales?: number;
+  totalDebtRepaidCash?: number;
+  totalDebtRepaidCard?: number;
   totalTips: number;
   totalRefunds: number;
   expectedCash: number | null;
@@ -196,6 +199,21 @@ export default function CashShifts() {
                   <p className="text-xs text-warning-600">Чаевые</p>
                   <p className="text-lg font-bold text-warning-700">{money(showDetail.totalTips)}</p>
                 </div>
+                {(showDetail.totalDebtSales ?? 0) > 0 && (
+                  <div className="rounded-lg bg-warning-50 p-3">
+                    <p className="text-xs text-warning-600">В долг (в кассу не попало)</p>
+                    <p className="text-lg font-bold text-warning-800">{money(showDetail.totalDebtSales ?? 0)}</p>
+                  </div>
+                )}
+                {(showDetail.totalDebtRepaidCash ?? 0) + (showDetail.totalDebtRepaidCard ?? 0) > 0 && (
+                  <div className="rounded-lg bg-success-50 p-3">
+                    <p className="text-xs text-success-600">Погашено долгов</p>
+                    <p className="text-lg font-bold text-success-700">{money((showDetail.totalDebtRepaidCash ?? 0) + (showDetail.totalDebtRepaidCard ?? 0))}</p>
+                    <p className="text-xs text-gray-500">
+                      наличными {money(showDetail.totalDebtRepaidCash ?? 0)} · картой {money(showDetail.totalDebtRepaidCard ?? 0)}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

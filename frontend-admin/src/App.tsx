@@ -12,6 +12,7 @@ import OrderDetail from "./pages/OrderDetail";
 import Payments from "./pages/Payments";
 import Inventory from "./pages/Inventory";
 import StockReceipts from "./pages/StockReceipts";
+import Customers from "./pages/Customers";
 import CashShifts from "./pages/CashShifts";
 import Users from "./pages/Users";
 import Categories from "./pages/Categories";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/payments" element={<Payments />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/stock-receipts" element={<StockReceipts />} />
+        <Route path="/customers" element={<Customers />} />
         <Route path="/cash-shifts" element={<CashShifts />} />
         <Route path="/users" element={<Users />} />
         <Route path="/categories" element={<Categories />} />

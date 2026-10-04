@@ -18,6 +18,7 @@ import {
   Clock,
   ChefHat,
   Utensils,
+  Contact,
 } from "lucide-react";
 import { useUIStore } from "../store/uiStore";
 import { useAuthStore } from "../store/authStore";
@@ -34,6 +35,7 @@ const navItems = [
   { to: "/payments", icon: CreditCard, label: "Оплаты" },
   { to: "/inventory", icon: Warehouse, label: "Склад" },
   { to: "/stock-receipts", icon: FileText, label: "Приходы" },
+  { to: "/customers", icon: Contact, label: "Клиенты" },
   { to: "/cash-shifts", icon: Clock, label: "Смены" },
   { to: "/tables", icon: Grid3X3, label: "Столы" },
   { to: "/users", icon: Users, label: "Сотрудники" },

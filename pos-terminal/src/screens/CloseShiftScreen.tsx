@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { X, ArrowRight, Lock, TrendingUp, Banknote, CreditCard, QrCode, AlertTriangle } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, CreditCard, HandCoins, Lock, NotebookPen, QrCode, TrendingUp, X } from "lucide-react";
 import api from "../services/api";
 import toast from "react-hot-toast";
 import type { CashShift } from "../types";
@@ -49,7 +49,13 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
     );
   }
 
-  const expectedCash = shift.openingCash + shift.totalCashSales - shift.totalRefunds;
+  // Ожидаемые наличные считает сервер: начальная сумма, наличные продажи и
+  // погашения долгов наличными. Раньше касса считала сама и вычитала возвраты,
+  // которые уже выпали из продаж, а погашений не знала вовсе.
+  const expectedCash = shift.expectedCash ?? shift.openingCash + shift.totalCashSales;
+  const debtSales = shift.totalDebtSales ?? 0;
+  const repaidCash = shift.totalDebtRepaidCash ?? 0;
+  const repaidCard = shift.totalDebtRepaidCard ?? 0;
   const parsedClosing = parseFloat(closingCash) || 0;
   const difference = parsedClosing - expectedCash;
   const quickAmounts = [expectedCash, Math.round(expectedCash / 10000) * 10000, Math.ceil(expectedCash / 50000) * 50000];
@@ -86,6 +92,14 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
             <SummaryCard icon={<Banknote className="h-4 w-4 text-success-400" />} label="Наличные" value={money(shift.totalCashSales)} />
             <SummaryCard icon={<CreditCard className="h-4 w-4 text-primary-400" />} label="Карта" value={money(shift.totalCardSales)} />
             <SummaryCard icon={<QrCode className="h-4 w-4 text-primary-300" />} label="QR" value={money(shift.totalQrSales)} />
+            {debtSales > 0 && <SummaryCard icon={<NotebookPen className="h-4 w-4 text-warning-400" />} label="В долг (не в кассе)" value={money(debtSales)} />}
+            {repaidCash + repaidCard > 0 && (
+              <SummaryCard
+                icon={<HandCoins className="h-4 w-4 text-success-400" />}
+                label={repaidCard > 0 ? `Погашено долгов (карта ${money(repaidCard)})` : "Погашено долгов"}
+                value={money(repaidCash + repaidCard)}
+              />
+            )}
           </div>
 
           {/* Opening / Expected */}
