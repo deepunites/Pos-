@@ -21,8 +21,10 @@
     "react-dom": "^18.3.0",
     "react-hot-toast": "^2.4.0",
     "react-router-dom": "^6.28.0",
+    "read-excel-file": "^9.3.10",
     "recharts": "^2.13.0",
     "socket.io-client": "^4.8.0",
+    "write-excel-file": "^4.1.1",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
