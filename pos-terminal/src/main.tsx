@@ -12,22 +12,14 @@ import "@fontsource/ibm-plex-sans/700.css";
 import "@fontsource/ibm-plex-sans-condensed/500.css";
 import "@fontsource/ibm-plex-sans-condensed/600.css";
 import "./index.css";
+import { watchAppUpdate } from "./services/appUpdate";
 
 watchConnection();
 
 // Офлайн-режим: service worker хранит саму кассу на планшете (vite.config.ts).
-// Раз в час проверяем, не вышла ли новая версия, — она включится со следующей
-// перезагрузкой страницы.
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
-      .then((registration) => {
-        setInterval(() => void registration.update().catch(() => undefined), 60 * 60 * 1000);
-      })
-      .catch(() => undefined);
-  });
-}
+// Новую версию касса ищет сама и включает её в паузе между продажами
+// (services/appUpdate.ts).
+if (import.meta.env.PROD) watchAppUpdate();
 
 // Apply the saved theme before the first paint, synchronously, so the app
 // never flashes dark before switching to a saved light preference.
