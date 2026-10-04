@@ -456,6 +456,8 @@ export default function ProductEdit() {
           )}
         </div>
 
+        {/* Рецептуры — для кафе; в магазине раздела «Тех карты» нет. */}
+        {!retail && (
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -540,6 +542,7 @@ export default function ProductEdit() {
             </div>
           )}
         </div>
+        )}
 
         <div className="card space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Идентификация</h2>

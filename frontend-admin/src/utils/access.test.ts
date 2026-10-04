@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { canOpenPanel, canOpenPath, homePathFor, posUrl } from "./access";
+import { canOpenPanel, canOpenPath, homePathFor, isRestaurantOnly, posUrl } from "./access";
 
 // Кто что видит в панели. Данные закрывает бэкенд, но если навигация
 // разойдётся с ним, кассир увидит экраны, на которых всё падает с 403, а повар —
@@ -60,5 +60,17 @@ describe("where the register lives", () => {
   it("stays on the same host otherwise", () => {
     at("https://qwik-admin.up.railway.app/");
     expect(posUrl()).toBe("https://qwik-admin.up.railway.app");
+  });
+});
+
+describe("sections a shop does not have", () => {
+  it("are tech cards, categories, kitchen and tables", () => {
+    for (const path of ["/tech-cards", "/categories", "/kitchen", "/tables"]) expect(isRestaurantOnly(path)).toBe(true);
+  });
+
+  it("leave everything a shop works with", () => {
+    for (const path of ["/", "/products", "/orders", "/payments", "/inventory", "/stock-receipts", "/customers", "/cash-shifts", "/users", "/reports", "/settings"]) {
+      expect(isRestaurantOnly(path)).toBe(false);
+    }
   });
 });
