@@ -346,11 +346,32 @@ export const settingsService = {
   update: (data: Record<string, unknown>) => api.put("/settings", data),
 };
 
+export interface LastSupply {
+  costPrice: number;
+  date: string;
+  supplierName: string | null;
+}
+
 export const stockReceiptService = {
   list: (params?: Record<string, string | number | boolean | undefined>) => api.get("/stock-receipts", { params }),
+  /** Номер, который получит следующий приход («ПР-0043»). */
+  nextNumber: () => api.get<ApiResponse<{ invoiceNumber: string }>>("/stock-receipts/next-number"),
+  /** Последняя поставка каждого товара: цена, дата, поставщик. */
+  lastSupply: (ids: string[]) => api.get<ApiResponse<Record<string, LastSupply>>>("/products/last-supply", { params: { ids: ids.join(",") } }),
   get: (id: string) => api.get(`/stock-receipts/${id}`),
-  create: (data: { supplierName?: string; invoiceNumber?: string; notes?: string; items: { productId: string; quantity: number; costPrice: number }[] }) =>
-    api.post("/stock-receipts", data),
+  create: (data: {
+    supplierName?: string;
+    invoiceNumber?: string;
+    notes?: string;
+    items: {
+      productId?: string;
+      newProduct?: { name: string; barcode?: string; weighed?: boolean };
+      quantity: number;
+      costPrice: number;
+      salePrice?: number;
+      updateSalePrice?: boolean;
+    }[];
+  }) => api.post("/stock-receipts", data),
   delete: (id: string) => api.delete(`/stock-receipts/${id}`),
 };
 
