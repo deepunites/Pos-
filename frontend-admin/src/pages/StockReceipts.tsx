@@ -4,15 +4,24 @@ import { stockReceiptService, productService } from "../services";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Modal from "../components/Modal";
 import toast from "react-hot-toast";
-import { Plus, Trash2, Calendar, Building2, Eye, Search, Truck } from "lucide-react";
+import { Plus, Trash2, Calendar, Building2, Eye, Search, Truck, Camera, History, ScanBarcode } from "lucide-react";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+import BarcodeCamera from "../components/BarcodeCamera";
+import { useIsRetail } from "../hooks/useSettings";
+import { lookupBarcode } from "../utils/barcodeLookup";
 import EmptyState from "../components/EmptyState";
 import type { Product } from "../services";
 import { useMoney } from "../hooks/useMoney";
 
 
 interface ReceiptItem {
+  /** Пусто — новый товар: создастся вместе с приходом. */
   productId: string;
   productName: string;
+  barcode?: string;
+  /** Новый товар магазина продаётся на вес (за кг). */
+  weighed?: boolean;
   quantity: number;
   costPrice: number;
   totalSum: number;
@@ -46,6 +55,21 @@ export default function StockReceipts() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  const retail = useIsRetail();
+  const [scanning, setScanning] = useState(false);
+  // Номер, который сервер даст приходу сам, — показываем заранее.
+  const [autoNumber, setAutoNumber] = useState("");
+
+  useEffect(() => {
+    if (!showCreate) return;
+    stockReceiptService
+      .nextNumber()
+      .then((r) => {
+        setAutoNumber(r.data.data.invoiceNumber);
+        setInvoiceNumber((current) => current || r.data.data.invoiceNumber);
+      })
+      .catch(() => setAutoNumber(""));
+  }, [showCreate]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -82,6 +106,13 @@ export default function StockReceipts() {
   });
 
   const products: Product[] = productsData || [];
+  const knownIds = items.map((i) => i.productId).filter(Boolean).sort();
+  // Последняя поставка каждого товара в приходе — подсказка цены.
+  const { data: lastSupply = {} } = useQuery({
+    queryKey: ["last-supply", knownIds.join(",")],
+    queryFn: () => stockReceiptService.lastSupply(knownIds).then((r) => r.data.data),
+    enabled: knownIds.length > 0,
+  });
   const receipts: Receipt[] = receiptsData?.data || [];
 
   const filteredProducts = searchQuery
@@ -95,11 +126,18 @@ export default function StockReceipts() {
   const resetForm = () => {
     setSupplierName("");
     setInvoiceNumber("");
+    setAutoNumber("");
     setNotes("");
     setItems([]);
   };
 
   const handleProductSelect = (product: Product) => {
+    // Тот же товар ещё раз (повторный скан) — +1 к количеству, а не новая строка.
+    const existing = items.findIndex((i) => i.productId === product.id);
+    if (existing >= 0) {
+      updateItemQty(existing, items[existing].quantity + 1);
+      return;
+    }
     const volumeLabel = product.volume ? ` (${product.volume})` : "";
     const costPrice = product.costPrice || 0;
     setItems([...items, {
@@ -117,10 +155,12 @@ export default function StockReceipts() {
   const updateItemQty = (index: number, qty: number) => {
     const updated = [...items];
     updated[index].quantity = qty;
-    if (updated[index].lastEdited === "costPrice") {
-      updated[index].totalSum = qty * updated[index].costPrice;
-    } else if (updated[index].lastEdited === "totalSum") {
+    // Сумму вводили руками — держим её и пересчитываем цену; иначе сумма
+    // следует за количеством (раньше без правки цены она не менялась вовсе).
+    if (updated[index].lastEdited === "totalSum") {
       updated[index].costPrice = qty > 0 ? updated[index].totalSum / qty : 0;
+    } else {
+      updated[index].totalSum = qty * updated[index].costPrice;
     }
     setItems(updated);
   };
@@ -147,6 +187,39 @@ export default function StockReceipts() {
     setItems(updated);
   };
 
+  const updateNewItem = (index: number, patch: Partial<ReceiptItem>) => {
+    setItems(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  // Сканер «печатает» штрихкод в поле поиска и жмёт Enter; камера — то же.
+  const handleBarcode = async (raw: string) => {
+    const code = raw.replace(/\s/g, "");
+    setSearchQuery("");
+    setShowSuggestions(false);
+    if (!code) return;
+    const sameNew = items.findIndex((i) => !i.productId && i.barcode === code);
+    if (sameNew >= 0) {
+      updateItemQty(sameNew, items[sameNew].quantity + 1);
+      return;
+    }
+    try {
+      const hit = await lookupBarcode(code);
+      if (hit.product) {
+        handleProductSelect(hit.product);
+      } else if (retail) {
+        setItems([
+          ...items,
+          { productId: "", productName: hit.name ?? "", barcode: code, quantity: 1, costPrice: 0, totalSum: 0, lastEdited: null, currentPrice: 0, salePrice: "" },
+        ]);
+        if (!hit.name) toast("Штрихкода нет в базе — введите название", { duration: 3000 });
+      } else {
+        toast.error("Такого товара нет — сначала добавьте его в «Товарах»");
+      }
+    } catch {
+      toast.error("Не удалось проверить штрихкод — проверьте соединение");
+    }
+  };
+
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index));
   };
@@ -158,12 +231,19 @@ export default function StockReceipts() {
       toast.error("Добавьте хотя бы один товар");
       return;
     }
+    if (items.some((i) => !i.productId && !i.productName.trim())) {
+      toast.error("Введите название нового товара");
+      return;
+    }
     createMutation.mutate({
       supplierName: supplierName || undefined,
-      invoiceNumber: invoiceNumber || undefined,
+      // Не меняли «ПР-…» — сервер присвоит номер сам (вдруг кто-то успел раньше).
+      invoiceNumber: invoiceNumber && invoiceNumber !== autoNumber ? invoiceNumber : undefined,
       notes: notes || undefined,
       items: items.map((item) => ({
-        productId: item.productId,
+        ...(item.productId
+          ? { productId: item.productId }
+          : { newProduct: { name: item.productName.trim(), barcode: item.barcode, weighed: item.weighed } }),
         quantity: item.quantity,
         costPrice: item.costPrice,
         // Only a price the manager actually typed is sent; otherwise the
@@ -254,7 +334,7 @@ export default function StockReceipts() {
         </div>
       )}
 
-      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Новый приход" size="lg">
+      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Новый приход" size="xl">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -268,12 +348,16 @@ export default function StockReceipts() {
             </div>
             <div>
               <label htmlFor="stockreceipt-f2" className="label">Номер накладной</label>
-              <input id="stockreceipt-f2"
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                className="input"
-                placeholder="Номер документа"
-              />
+              <div className="flex items-center gap-2">
+                <input id="stockreceipt-f2"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  className="input"
+                  placeholder={autoNumber || "Номер документа"}
+                />
+                {invoiceNumber === autoNumber && autoNumber && <span className="rounded bg-success-50 px-2 py-0.5 text-xs font-semibold text-success-700">авто</span>}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Следующий по порядку; можно заменить номером поставщика</p>
             </div>
           </div>
 
@@ -282,7 +366,11 @@ export default function StockReceipts() {
 
             <div className="relative mb-3" ref={searchRef}>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                {retail ? (
+                  <ScanBarcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                ) : (
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                )}
                 <input
                   type="text"
                   value={searchQuery}
@@ -290,11 +378,27 @@ export default function StockReceipts() {
                     setSearchQuery(e.target.value);
                     setShowSuggestions(true);
                   }}
+                  onKeyDown={(e) => {
+                    // Только цифры и Enter — это штрихкод со сканера.
+                    if (e.key === "Enter" && /^\d{6,}$/.test(searchQuery.trim())) {
+                      e.preventDefault();
+                      void handleBarcode(searchQuery);
+                    }
+                  }}
                   onFocus={() => setShowSuggestions(true)}
-                  className="input text-sm pl-10"
-                  placeholder="Начните вводить название товара..."
+                  className="input text-sm pl-10 pr-28"
+                  placeholder={retail ? "Сканируйте штрихкод или начните вводить название" : "Начните вводить название товара..."}
                 />
+                <button
+                  type="button"
+                  onClick={() => setScanning(true)}
+                  className="absolute right-1.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-1.5 rounded border border-gray-200 bg-surface px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  Камера
+                </button>
               </div>
+              {retail && <p className="mt-1 text-xs text-gray-500">Повторный скан того же товара — +1 к количеству. Незнакомый штрихкод — новая строка с названием из базы штрихкодов.</p>}
               {showSuggestions && searchQuery && filteredProducts.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-surface shadow-lg">
                   {filteredProducts.slice(0, 10).map((p) => (
@@ -330,7 +434,29 @@ export default function StockReceipts() {
                 </div>
                 {items.map((item, index) => (
                   <div key={index} className="grid grid-cols-12 gap-2 items-center bg-gray-50 rounded-lg px-2 py-2">
-                    <div className="col-span-3 text-sm font-medium truncate">{item.productName}</div>
+                    <div className="col-span-3 min-w-0">
+                      {item.productId ? (
+                        <div className="text-sm font-medium truncate" title={item.productName}>{item.productName}</div>
+                      ) : (
+                        <>
+                          <input
+                            value={item.productName}
+                            onChange={(e) => updateNewItem(index, { productName: e.target.value })}
+                            placeholder="Название нового товара"
+                            aria-label="Название нового товара"
+                            className="input text-sm py-1.5"
+                          />
+                          <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
+                            <span className="rounded bg-warning-50 px-1.5 font-semibold text-warning-800">новый</span>
+                            {item.barcode && <span className="truncate">{item.barcode}</span>}
+                            <label className="flex items-center gap-1">
+                              <input type="checkbox" checked={item.weighed ?? false} onChange={(e) => updateNewItem(index, { weighed: e.target.checked })} />
+                              на вес
+                            </label>
+                          </div>
+                        </>
+                      )}
+                    </div>
                     <div className="col-span-1">
                       <input
                         type="number"
@@ -350,6 +476,17 @@ export default function StockReceipts() {
                         onChange={(e) => updateItemCostPrice(index, parseFloat(e.target.value) || 0)}
                         className="input text-sm py-1.5"
                       />
+                      {lastSupply[item.productId] && (
+                        <button
+                          type="button"
+                          onClick={() => updateItemCostPrice(index, lastSupply[item.productId].costPrice)}
+                          className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-info-700 hover:underline"
+                          title="Подставить цену последней поставки"
+                        >
+                          <History className="h-3 w-3" />
+                          посл.: {money(lastSupply[item.productId].costPrice)} · {format(new Date(lastSupply[item.productId].date), "d MMM", { locale: ru })}
+                        </button>
+                      )}
                     </div>
                     <div className="col-span-2">
                       <input
@@ -368,18 +505,20 @@ export default function StockReceipts() {
                         step="0.01"
                         value={item.salePrice}
                         onChange={(e) => updateItemSalePrice(index, e.target.value)}
-                        placeholder={`сейчас ${money(item.currentPrice)}`}
+                        placeholder={item.productId ? `сейчас ${money(item.currentPrice)}` : "цена продажи"}
                         className="input text-sm py-1.5"
                       />
-                      {item.salePrice !== "" && item.costPrice > 0 && (
-                        <p
-                          className={`mt-0.5 text-[11px] ${
-                            parseFloat(item.salePrice) > item.costPrice ? "text-success-600" : "text-danger-600"
-                          }`}
-                        >
-                          маржа {money(parseFloat(item.salePrice) - item.costPrice)}
-                        </p>
-                      )}
+                      {(() => {
+                        // Маржа — от новой цены, если её ввели, иначе от текущей.
+                        const sale = item.salePrice !== "" ? parseFloat(item.salePrice) : item.currentPrice;
+                        if (!(item.costPrice > 0) || !(sale > 0)) return null;
+                        const margin = sale - item.costPrice;
+                        return (
+                          <p className={`mt-0.5 text-[11px] ${margin > 0 ? "text-success-600" : "text-danger-600"}`}>
+                            маржа {money(margin)} · {Math.round((margin / item.costPrice) * 100)}%
+                          </p>
+                        );
+                      })()}
                     </div>
                     <div className="col-span-1 text-right">
                       <button onClick={() => removeItem(index)} className="text-danger-500 hover:text-danger-700">
@@ -420,6 +559,16 @@ export default function StockReceipts() {
           </div>
         </div>
       </Modal>
+
+      {scanning && (
+        <BarcodeCamera
+          onClose={() => setScanning(false)}
+          onDetected={(code) => {
+            setScanning(false);
+            void handleBarcode(code);
+          }}
+        />
+      )}
 
       <Modal isOpen={!!showDetail} onClose={() => setShowDetail(null)} title="Детали прихода" size="md">
         {showDetail && (

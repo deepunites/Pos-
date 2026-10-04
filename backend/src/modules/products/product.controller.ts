@@ -25,6 +25,14 @@ export class ProductController {
     }
   }
 
+  async lastSupply(req: Request, res: Response) {
+    try {
+      sendSuccess(res, await productService.lastSupply(req.user!.tenantId, req.query.ids as unknown as string[]));
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+
   async findById(req: Request, res: Response) {
     try {
       const id = req.params.id as string;

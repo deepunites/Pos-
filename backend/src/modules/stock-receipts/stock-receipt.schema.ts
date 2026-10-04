@@ -1,15 +1,16 @@
 import { z } from "zod";
 
-const newProductSchema = z
-  .object({
-    name: z.string().min(1),
-    categoryId: z.string().uuid().optional(),
-    newCategoryName: z.string().min(1).optional(),
-    unit: z.string().optional(),
-  })
-  .refine((d) => !!d.categoryId || !!d.newCategoryName, {
-    message: "Укажите категорию (categoryId или newCategoryName)",
-  });
+// Новый товар прямо в приходе. Категория — у кафе (по ней кухня и меню);
+// у магазина её нет: товар ищут сканером, а не по полкам.
+const newProductSchema = z.object({
+  name: z.string().trim().min(1),
+  categoryId: z.string().uuid().optional(),
+  newCategoryName: z.string().trim().min(1).optional(),
+  unit: z.string().optional(),
+  barcode: z.string().trim().min(1).max(64).optional(),
+  // На вес: цена и остаток — за килограмм, кассир вводит вес.
+  weighed: z.boolean().optional(),
+});
 
 const stockReceiptItemSchema = z
   .object({

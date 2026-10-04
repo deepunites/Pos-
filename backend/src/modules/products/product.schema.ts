@@ -76,6 +76,14 @@ export const productQuerySchema = z.object({
 
 // One product by what the scanner read: barcode, or the short code (SKU/PLU)
 // typed on the keypad. Exact match only.
+// ?ids=a,b,c — до сотни товаров за раз (строки прихода).
+export const lastSupplyQuerySchema = z.object({
+  ids: z
+    .string()
+    .transform((v) => v.split(",").map((id) => id.trim()).filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(1).max(100)),
+});
+
 export const productLookupSchema = z.object({
   code: z.string().trim().min(1).max(64),
 });

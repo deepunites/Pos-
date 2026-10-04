@@ -44,6 +44,17 @@ function resolveSalePrice(
   return null;
 }
 
+const INVOICE_PREFIX = "ПР-";
+
+/** Следующий номер накладной заведения: «ПР-0043». Номера поставщиков не мешают — считаются только свои. */
+export async function nextInvoiceNumber(db: Pick<typeof prisma, "$queryRaw">, tenantId: string): Promise<string> {
+  const rows = await db.$queryRaw<{ n: number | null }[]>`
+    SELECT MAX(CAST(substring(invoice_number from '^ПР-([0-9]+)$') AS INTEGER)) AS n
+    FROM stock_receipts
+    WHERE tenant_id = ${tenantId} AND invoice_number ~ '^ПР-[0-9]+$'`;
+  return `${INVOICE_PREFIX}${String((rows[0]?.n ?? 0) + 1).padStart(4, "0")}`;
+}
+
 export class StockReceiptService {
   /**
    * Books a delivery: resolves (or creates) every product, writes the receipt
@@ -98,12 +109,17 @@ export class StockReceiptService {
             { productName: item.newProduct.name.trim(), markupPercent, isNewProduct: true }
           )!;
 
+          // «кг» с кассы или флажок «на вес» — весовой товар: раньше unit «кг»
+          // без saleUnit продавался поштучно, хотя пришёл килограммами.
+          const weighed = item.newProduct.weighed || ["кг", "kg"].includes((item.newProduct.unit || "").trim().toLowerCase());
           const created = await tx.product.create({
             data: {
               tenantId,
               categoryId,
               name: item.newProduct.name.trim(),
-              unit: item.newProduct.unit || "piece",
+              barcode: item.newProduct.barcode,
+              unit: weighed ? "kg" : item.newProduct.unit || "piece",
+              saleUnit: weighed ? "кг" : undefined,
               costPrice: item.costPrice,
               price,
               currentStock: 0,
@@ -148,7 +164,8 @@ export class StockReceiptService {
           tenantId,
           userId,
           supplierName: data.supplierName,
-          invoiceNumber: data.invoiceNumber,
+          // Пустой номер — следующий по порядку («ПР-0043»).
+          invoiceNumber: data.invoiceNumber?.trim() || (await nextInvoiceNumber(tx, tenantId)),
           totalAmount,
           notes: data.notes,
           items: {

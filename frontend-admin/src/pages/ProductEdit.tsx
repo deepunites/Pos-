@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Save, ChefHat, Plus, ExternalLink } from "lucide-react";
+import { ArrowLeft, Save, ChefHat, Plus, ExternalLink, ScanBarcode, Camera, History } from "lucide-react";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+import toast from "react-hot-toast";
 import { useProduct, useCreateProduct, useUpdateProduct, useCategories } from "../hooks/useProducts";
 import { useTechCards } from "../hooks/useTechCards";
-import { settingsService } from "../services";
+import { settingsService, stockReceiptService } from "../services";
+import BarcodeCamera from "../components/BarcodeCamera";
+import { lookupBarcode } from "../utils/barcodeLookup";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Checkbox from "../components/Checkbox";
 import { useMoney } from "../hooks/useMoney";
@@ -31,6 +36,15 @@ export default function ProductEdit() {
   const { data: product, isLoading } = useProduct(id || "");
   const { data: categories } = useCategories();
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: () => settingsService.get().then((r) => r.data.data) });
+  // Магазин: без категории, цеха и метода приготовления — это поля кафе.
+  const retail = settings?.businessType === "retail";
+  const { data: lastSupply } = useQuery({
+    queryKey: ["last-supply", id],
+    queryFn: () => stockReceiptService.lastSupply([id!]).then((r) => r.data.data[id!] ?? null),
+    enabled: !isNew,
+  });
+  const [scanning, setScanning] = useState(false);
+  const barcodeRef = useRef<HTMLInputElement>(null);
   const { data: techCardsData } = useTechCards({ limit: 100 });
   const techCardsList = techCardsData || [];
 
@@ -123,11 +137,30 @@ export default function ProductEdit() {
   useEffect(() => {
     if (isNew && settings && !settingsLoadedRef.current) {
       settingsLoadedRef.current = true;
-      setForm((prev) => ({ ...prev, unit: stableDefaultUnit }));
+      // У магазина остатки учитываются сразу: количество — начальный остаток.
+      setForm((prev) => ({ ...prev, unit: stableDefaultUnit, trackInventory: prev.trackInventory || settings.businessType === "retail" }));
     }
   }, [isNew, settings, stableDefaultUnit]);
 
   if (!isNew && isLoading) return <LoadingSpinner />;
+
+  // Отсканировали (сканером в поле или камерой) — название подтянется из базы штрихкодов.
+  const applyBarcode = async (raw: string) => {
+    const code = raw.replace(/\s/g, "");
+    setForm((prev) => ({ ...prev, barcode: code }));
+    if (!code) return;
+    try {
+      const hit = await lookupBarcode(code);
+      if (hit.product && hit.product.id !== id) {
+        toast.error(`Этот штрихкод уже у товара «${hit.product.name}»`);
+      } else if (hit.name) {
+        setForm((prev) => (prev.name.trim() ? prev : { ...prev, name: hit.name! }));
+        toast.success("Название — из базы штрихкодов", { duration: 2000 });
+      }
+    } catch {
+      // без связи с базой штрихкодов название вводят вручную
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,9 +192,49 @@ export default function ProductEdit() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="card space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Основная информация</h2>
+          {retail && (
+            <div>
+              <label htmlFor="productedit-barcode" className="label">Штрихкод</label>
+              <div className="flex gap-2">
+                <input
+                  id="productedit-barcode"
+                  ref={barcodeRef}
+                  type="text"
+                  inputMode="numeric"
+                  value={form.barcode}
+                  onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void applyBarcode(form.barcode);
+                    }
+                  }}
+                  onBlur={() => form.barcode && !form.name.trim() && void applyBarcode(form.barcode)}
+                  className="input"
+                  placeholder="Отсканируйте или введите"
+                />
+                <button type="button" onClick={() => barcodeRef.current?.focus()} className="btn-secondary whitespace-nowrap" title="Сканер штрихкодов «печатает» код в поле">
+                  <ScanBarcode className="mr-2 h-4 w-4" />
+                  Сканер
+                </button>
+                <button type="button" onClick={() => setScanning(true)} className="btn-secondary whitespace-nowrap">
+                  <Camera className="mr-2 h-4 w-4" />
+                  Камера
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Название подставится из базы штрихкодов.
+                {ikpu && (
+                  <>
+                    {" "}ИКПУ: <span className="font-mono text-gray-700">{ikpu}</span>
+                  </>
+                )}
+              </p>
+            </div>
+          )}
           <div>
             <label htmlFor="productedit-f1" className="label">Название товара *</label>
-            <input id="productedit-f1" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" placeholder="Напр., Классический бургер" required />
+            <input id="productedit-f1" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" placeholder={retail ? "Напр., Сок яблочный 1 л" : "Напр., Классический бургер"} required />
           </div>
           <div>
             <label htmlFor="productedit-f2" className="label">Описание</label>
@@ -230,6 +303,7 @@ export default function ProductEdit() {
               </div>
             )}
           </div>
+          {!retail && (
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="productedit-f3" className="label">Категория</label>
@@ -250,7 +324,9 @@ export default function ProductEdit() {
               </select>
             </div>
           </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
+            {!retail && (
             <div>
               <label htmlFor="productedit-f5" className="label">Метод приготовления</label>
               <select id="productedit-f5" value={form.cookingMethod} onChange={(e) => setForm({ ...form, cookingMethod: e.target.value })} className="input">
@@ -266,6 +342,7 @@ export default function ProductEdit() {
               </select>
               <p className="text-[10px] text-gray-500 mt-1">Определяет приоритет печати на чеке (1, 2, 3...)</p>
             </div>
+            )}
             <div className="flex items-end">
               <label className="flex items-center gap-3 pb-1">
                 <input type="checkbox" checked={form.noDiscounts} onChange={(e) => setForm({ ...form, noDiscounts: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-primary-600" />
@@ -340,6 +417,18 @@ export default function ProductEdit() {
                 <input id="productedit-f10" type="text" readOnly value={`${money(form.costPrice)} (авто)`} className="input bg-gray-100 text-gray-600 cursor-not-allowed" />
               ) : (
                 <input id="productedit-f10" type="number" step="0.01" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: parseFloat(e.target.value) || 0 })} className="input" />
+              )}
+              {lastSupply && (
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, costPrice: lastSupply.costPrice })}
+                  className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-info-100 bg-info-50 px-2 py-1 text-left text-xs text-info-700 hover:bg-info-100"
+                  title="Подставить цену последней поставки"
+                >
+                  <History className="h-3.5 w-3.5 flex-shrink-0" />
+                  Последняя поставка: {money(lastSupply.costPrice)} · {format(new Date(lastSupply.date), "d MMM", { locale: ru })}
+                  {lastSupply.supplierName ? ` · ${lastSupply.supplierName}` : ""}
+                </button>
               )}
             </div>
             <div>
@@ -460,6 +549,7 @@ export default function ProductEdit() {
               <input id="productedit-f16" type="text" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="input" placeholder={form.saleUnit === "кг" ? "например, 104" : "Артикул товара"} />
               <p className="mt-1 text-xs text-gray-500">Его можно набрать на кассе цифрами, если штрихкода нет.</p>
             </div>
+            {!retail && (
             <div>
               <label htmlFor="productedit-f17" className="label">Штрихкод</label>
               <input id="productedit-f17" type="text" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input" placeholder="Штрихкод" />
@@ -470,6 +560,7 @@ export default function ProductEdit() {
               )}
               <p className="mt-1 text-xs text-gray-500">Кассир сканирует его — товар сразу попадает в чек.</p>
             </div>
+            )}
           </div>
           <Checkbox
             label="Быстрая кнопка на кассе"
@@ -487,6 +578,15 @@ export default function ProductEdit() {
           </button>
         </div>
       </form>
+      {scanning && (
+        <BarcodeCamera
+          onClose={() => setScanning(false)}
+          onDetected={(code) => {
+            setScanning(false);
+            void applyBarcode(code);
+          }}
+        />
+      )}
     </div>
   );
 }

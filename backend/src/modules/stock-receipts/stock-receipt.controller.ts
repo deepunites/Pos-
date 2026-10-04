@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { stockReceiptService } from "./stock-receipt.service.js";
+import { nextInvoiceNumber, stockReceiptService } from "./stock-receipt.service.js";
+import prisma from "../../config/database.js";
 import { sendSuccess, sendPaginated } from "../../utils/response.js";
 import { handleError } from "../../utils/errors.js";
 import { idempotencyFrom, withIdempotency } from "../../utils/idempotency.js";
@@ -33,6 +34,15 @@ export class StockReceiptController {
         supplierName: req.query.supplierName as string,
       });
       sendPaginated(res, receipts, total, page, limit);
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+
+  /** Номер, который получит следующий приход, — форма показывает его заранее. */
+  async nextNumber(req: Request, res: Response) {
+    try {
+      sendSuccess(res, { invoiceNumber: await nextInvoiceNumber(prisma, req.user!.tenantId) });
     } catch (error) {
       handleError(res, error);
     }

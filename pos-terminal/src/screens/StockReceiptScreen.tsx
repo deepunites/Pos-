@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { X, Plus, Trash2, PackagePlus, Loader2 } from "lucide-react";
+import { X, Plus, Trash2, PackagePlus, Loader2, ScanBarcode, History } from "lucide-react";
+import { useDebounced } from "../hooks/useDebounced";
 import api from "../services/api";
 import toast from "react-hot-toast";
 import type { Category, Product } from "../types";
@@ -24,7 +25,7 @@ interface StagedItem {
   categoryLabel: string;
   payload:
     | { productId: string }
-    | { newProduct: { name: string; categoryId?: string; newCategoryName?: string; unit: string } };
+    | { newProduct: { name: string; categoryId?: string; newCategoryName?: string; unit: string; barcode?: string } };
 }
 
 
@@ -70,6 +71,53 @@ export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps)
     queryFn: () => api.get("/settings").then((r) => r.data.data),
   });
   const defaultMarkup = Number(settings?.defaultMarkupPercent) || 0;
+  // Магазин: товар ищут сканером или по названию, категорий нет.
+  const retail = settings?.businessType === "retail";
+  const [pickQuery, setPickQuery] = useState("");
+  const [picked, setPicked] = useState<Product | null>(null);
+  const [newBarcode, setNewBarcode] = useState<string | undefined>();
+  const [looking, setLooking] = useState(false);
+  const pickSearch = useDebounced(pickQuery.trim(), 250);
+  const { data: pickSuggestions = [] } = useQuery<Product[]>({
+    queryKey: ["receipt-search", pickSearch],
+    queryFn: () => api.get("/products", { params: { search: pickSearch, limit: 8, isIngredient: false } }).then((r) => r.data.data as Product[]),
+    enabled: retail && !picked && productMode === "existing" && pickSearch.length >= 2 && !/^\d+$/.test(pickSearch),
+  });
+  const { data: lastSupply } = useQuery<{ costPrice: number; date: string } | null>({
+    queryKey: ["last-supply", picked?.id],
+    queryFn: () => api.get("/products/last-supply", { params: { ids: picked!.id } }).then((r) => r.data.data[picked!.id] ?? null),
+    enabled: retail && !!picked,
+  });
+
+  // Штрихкод со сканера (цифры + Enter): свой товар — выбрать, незнакомый —
+  // новый товар с названием из базы штрихкодов.
+  const pickBarcode = async (code: string) => {
+    setLooking(true);
+    try {
+      const own = await api
+        .get("/products/lookup", { params: { code } })
+        .then((r) => r.data.data as Product)
+        .catch((error) => {
+          if (error?.response?.status === 404) return null;
+          throw error;
+        });
+      if (own) {
+        setPicked(own);
+        setProductMode("existing");
+      } else {
+        const answer = await api.post("/catalog/lookup", { code }).then((r) => r.data.data as { found: boolean; displayName?: string });
+        setProductMode("new");
+        setNewProductName(answer.found ? answer.displayName ?? "" : "");
+        setNewBarcode(code);
+        if (!answer.found) toast("Штрихкода нет в базе — введите название", { duration: 3000 });
+      }
+      setPickQuery("");
+    } catch {
+      toast.error("Не удалось проверить штрихкод — проверьте соединение");
+    } finally {
+      setLooking(false);
+    }
+  };
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["categories"],
@@ -86,9 +134,9 @@ export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps)
   });
 
   const selectedCategory = categories?.find((c) => c.id === categoryId);
-  const effectiveMarkup = categoryMode === "existing" && selectedCategory ? Number(selectedCategory.markupPercent) || 0 : defaultMarkup;
+  const effectiveMarkup = !retail && categoryMode === "existing" && selectedCategory ? Number(selectedCategory.markupPercent) || 0 : defaultMarkup;
 
-  const selectedProduct = categoryProducts?.find((p) => p.id === productId);
+  const selectedProduct = retail ? picked ?? undefined : categoryProducts?.find((p) => p.id === productId);
 
   // A markup of 0% is not a markup: deriving a price from it would set the
   // shelf price to the purchase price. In that case the current price is
@@ -113,14 +161,17 @@ export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps)
   const margin = parsedSalePrice !== null && parsedCost > 0 ? parsedSalePrice - parsedCost : null;
 
   const canAdd =
-    (categoryMode === "existing" ? !!categoryId : newCategoryName.trim().length > 0) &&
-    (productMode === "existing" ? !!productId : newProductName.trim().length > 0) &&
+    (retail || (categoryMode === "existing" ? !!categoryId : newCategoryName.trim().length > 0)) &&
+    (productMode === "existing" ? (retail ? !!picked : !!productId) : newProductName.trim().length > 0) &&
     parseFloat(quantity) > 0 &&
     parseFloat(costPrice) >= 0 &&
     costPrice !== "" &&
     (productMode === "existing" || (parsedSalePrice !== null && parsedSalePrice > 0));
 
   const resetProductFields = (): void => {
+    setPicked(null);
+    setPickQuery("");
+    setNewBarcode(undefined);
     setProductId("");
     setNewProductName("");
     setQuantity("1");
@@ -151,7 +202,15 @@ export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps)
     let label: string;
     let categoryLabel: string;
 
-    if (productMode === "existing") {
+    if (retail && productMode === "existing" && picked) {
+      payload = { productId: picked.id };
+      label = picked.name;
+      categoryLabel = picked.barcode ?? "";
+    } else if (retail) {
+      payload = { newProduct: { name: newProductName.trim(), unit, barcode: newBarcode } };
+      label = `${newProductName.trim()} (новый)`;
+      categoryLabel = newBarcode ?? "";
+    } else if (productMode === "existing") {
       const product = categoryProducts?.find((p) => p.id === productId);
       payload = { productId };
       label = product?.name || "Товар";
@@ -243,6 +302,98 @@ export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps)
           </div>
 
           <div className="rounded border border-dark-700 bg-dark-900/50 p-4 space-y-4">
+            {retail ? (
+              <div>
+                <p className="mb-1.5 block text-xs font-medium text-dark-400">Товар</p>
+                {productMode === "existing" && picked ? (
+                  <div className="flex items-center gap-3 rounded border-2 border-primary-500 bg-dark-700 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-dark-50">{picked.name}</p>
+                      <p className="text-[11px] text-dark-400">
+                        остаток {stockText(picked)}
+                        {picked.barcode ? ` · ${picked.barcode}` : ""}
+                      </p>
+                    </div>
+                    <button onClick={resetProductFields} className="rounded p-1 text-dark-400 hover:text-dark-50" aria-label="Другой товар">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : productMode === "new" ? (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        value={newProductName}
+                        onChange={(e) => setNewProductName(e.target.value)}
+                        placeholder="Название нового товара"
+                        className="flex-1 rounded border-2 border-dark-600 bg-dark-700 px-3 py-2 text-sm text-dark-50 placeholder:text-dark-500 focus:border-primary-500 focus:outline-none"
+                      />
+                      <select
+                        value={unit === "кг" ? "кг" : "шт"}
+                        onChange={(e) => setUnit(e.target.value)}
+                        aria-label="Как продаётся"
+                        className="w-28 rounded border-2 border-dark-600 bg-dark-700 px-2 py-2 text-sm text-dark-50 focus:border-primary-500 focus:outline-none"
+                      >
+                        <option value="шт">шт</option>
+                        <option value="кг">на вес, кг</option>
+                      </select>
+                    </div>
+                    <p className="text-[11px] text-dark-400">
+                      <span className="rounded bg-warning-500/15 px-1.5 font-semibold text-warning-400">новый</span>
+                      {newBarcode ? ` штрихкод ${newBarcode} · ` : " "}
+                      без категории — у магазина товар ищут сканером.{" "}
+                      <button onClick={() => { setProductMode("existing"); resetProductFields(); }} className="underline hover:text-dark-50">
+                        Отмена
+                      </button>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <ScanBarcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dark-400" />
+                    <input
+                      value={pickQuery}
+                      onChange={(e) => setPickQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && /^\d{6,}$/.test(pickQuery.trim())) {
+                          e.preventDefault();
+                          void pickBarcode(pickQuery.trim());
+                        }
+                      }}
+                      placeholder="Сканируйте штрихкод или введите название"
+                      className="w-full rounded border-2 border-dark-600 bg-dark-700 py-2 pl-9 pr-3 text-sm text-dark-50 placeholder:text-dark-500 focus:border-primary-500 focus:outline-none"
+                    />
+                    {looking && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-dark-400" />}
+                    {pickSuggestions.length > 0 && (
+                      <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded border border-dark-600 bg-dark-800 shadow-lg">
+                        {pickSuggestions.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => {
+                              setPicked(p);
+                              setPickQuery("");
+                            }}
+                            className="flex w-full justify-between px-3 py-2 text-left text-sm text-dark-50 hover:bg-dark-700"
+                          >
+                            <span className="truncate">{p.name}</span>
+                            <span className="text-xs text-dark-400">остаток {stockText(p)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        setProductMode("new");
+                        setNewProductName(/^\d+$/.test(pickQuery.trim()) ? "" : pickQuery.trim());
+                        setPickQuery("");
+                      }}
+                      className="mt-1.5 text-xs font-medium text-primary-400 hover:text-primary-300"
+                    >
+                      + Новый товар
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
             {/* Category */}
             <div>
               <p id="receipt-category" className="mb-1.5 block text-xs font-medium text-dark-400">Категория</p>
@@ -358,6 +509,9 @@ export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps)
               )}
             </div>
 
+            </>
+            )}
+
             {/* Quantity + cost price */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -381,13 +535,23 @@ export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps)
                   onChange={(e) => setCostPrice(e.target.value)}
                   className="w-full rounded border-2 border-dark-600 bg-dark-700 px-3 py-2 text-sm text-dark-50 focus:border-primary-500 focus:outline-none"
                 />
+                {lastSupply && (
+                  <button
+                    onClick={() => setCostPrice(String(lastSupply.costPrice))}
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary-400 hover:text-primary-300"
+                    title="Подставить цену последней поставки"
+                  >
+                    <History className="h-3 w-3" />
+                    посл.: {money(lastSupply.costPrice)} · {new Date(lastSupply.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="space-y-2 rounded bg-dark-800 px-4 py-3">
               <label htmlFor="stockreceipt-f4" className="block text-xs text-dark-400">
                 Цена продажи
-                {effectiveMarkup > 0 ? ` (наценка ${effectiveMarkup}%)` : " — наценка категории не задана"}
+                {effectiveMarkup > 0 ? ` (наценка ${effectiveMarkup}%)` : retail ? "" : " — наценка категории не задана"}
               </label>
               <input id="stockreceipt-f4"
                 type="number"
