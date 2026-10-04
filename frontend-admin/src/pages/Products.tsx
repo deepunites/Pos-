@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Grid3X3, List, Package, Pencil, Trash2, ScanBarcode } from "lucide-react";
+import { Plus, Grid3X3, List, Package, Pencil, Trash2, ScanBarcode, Upload, Download, ChevronDown } from "lucide-react";
 import { useProducts, useDeleteProduct, useCategories } from "../hooks/useProducts";
 import SearchInput from "../components/SearchInput";
 import Badge from "../components/Badge";
@@ -10,6 +10,92 @@ import { useIsRetail } from "../hooks/useSettings";
 import ConfirmDialog from "../components/ConfirmDialog";
 import type { Product, Category } from "../services";
 import { useMoney } from "../hooks/useMoney";
+import ImportProductsModal from "../components/ImportProductsModal";
+import { productService } from "../services";
+import { notify } from "../components/notify";
+import { apiErrorMessage } from "../utils/apiError";
+import { downloadCsv, downloadTemplate, downloadXlsx } from "../utils/productsFile";
+
+/** «Экспорт ▾»: все товары в Excel или CSV для 1С, пустой шаблон для импорта. */
+function ExportMenu() {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  const run = async (kind: "xlsx" | "csv" | "template") => {
+    setOpen(false);
+    setBusy(true);
+    try {
+      if (kind === "template") {
+        await downloadTemplate();
+        return;
+      }
+      const products = (await productService.exportAll()).data.data;
+      const name = `Товары ${new Date().toLocaleDateString("sv-SE")}`;
+      if (kind === "xlsx") await downloadXlsx(products, `${name}.xlsx`);
+      else downloadCsv(products, `${name}.csv`);
+    } catch (e) {
+      notify.error(apiErrorMessage(e, "Не удалось выгрузить товары"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const items: { kind: "xlsx" | "csv" | "template"; title: string; hint: string }[] = [
+    { kind: "xlsx", title: "Все товары — Excel", hint: "цены, остатки, штрихкоды" },
+    { kind: "csv", title: "Все товары — CSV", hint: "для 1С и других программ" },
+    { kind: "template", title: "Пустой шаблон для импорта", hint: "колонки и пример строки" },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        className="btn-secondary whitespace-nowrap"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={busy}
+        onClick={() => setOpen(!open)}
+      >
+        {busy ? <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <Download className="mr-2 h-4 w-4" />}
+        Экспорт
+        <ChevronDown className="ml-1 h-4 w-4" />
+      </button>
+      {open && (
+        <div role="menu" className="card absolute right-0 top-full z-20 mt-1 w-72 p-1.5 shadow-lg">
+          {items.map((item) => (
+            <button
+              key={item.kind}
+              type="button"
+              role="menuitem"
+              className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+              onClick={() => void run(item.kind)}
+            >
+              <span className="block font-medium text-gray-900">{item.title}</span>
+              <span className="block text-xs text-gray-500">{item.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 
 export default function Products() {
@@ -19,6 +105,7 @@ export default function Products() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [categoryId, setCategoryId] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data, isLoading } = useProducts({ search, categoryId: categoryId || undefined, limit: 50 });
   const { data: categories } = useCategories();
@@ -39,7 +126,12 @@ export default function Products() {
           <h1 className="text-2xl font-bold text-gray-900">Товары</h1>
           <p className="text-gray-500">Управление каталогом товаров</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <button type="button" onClick={() => setImportOpen(true)} className="btn-secondary whitespace-nowrap" title="Загрузить товары из Excel или CSV — из 1С, другой программы или шаблона">
+            <Upload className="mr-2 h-4 w-4" />
+            Импорт
+          </button>
+          <ExportMenu />
           <Link to="/products/scan" aria-label="Добавить сканером" className="btn-secondary whitespace-nowrap" title="Наведите сканер на штрихкод — название подставится из общей базы">
             <ScanBarcode className="mr-2 h-4 w-4" />
             <span className="sm:hidden">Сканер</span>
@@ -115,6 +207,10 @@ export default function Products() {
                     <Plus className="mr-2 h-4 w-4" />
                     Вручную
                   </Link>
+                  <button type="button" onClick={() => setImportOpen(true)} className="btn-secondary">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Из Excel / 1С
+                  </button>
                 </>
               }
             />
@@ -301,6 +397,8 @@ export default function Products() {
         </div>
         </>
       )}
+
+      {importOpen && <ImportProductsModal onClose={() => setImportOpen(false)} />}
 
       <ConfirmDialog
         open={!!deleteId}

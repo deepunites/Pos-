@@ -1,4 +1,5 @@
 import api from "./api";
+import type { ExportProduct, ImportRow } from "../utils/productsFile";
 
 export interface LoginResponse {
   user: { id: string; firstName: string; lastName: string; email: string; role: string };
@@ -249,7 +250,31 @@ export const productService = {
     api.post(`/products/${id}/stock`, data),
   getIngredients: () => api.get<ApiResponse<Ingredient[]>>("/products/ingredients"),
   getTechCardCost: (id: string) => api.get<ApiResponse<{ cost: number }>>(`/products/${id}/tech-card-cost`),
+  /** apply=false — только проверка файла, ничего не пишет. Загрузка тысяч строк — дольше обычного запроса. */
+  importRows: (rows: ImportRow[], apply: boolean) =>
+    api.post<ApiResponse<ImportResult>>("/products/import", { rows, apply }, { timeout: 300_000 }),
+  exportAll: () => api.get<ApiResponse<ExportProduct[]>>("/products/export", { timeout: 120_000 }),
 };
+
+export type ImportKind = "create" | "update" | "same" | "error";
+export interface ImportChange {
+  field: "name" | "barcode" | "sku" | "category" | "unit" | "price" | "costPrice" | "stock" | "minStock";
+  from: string | number | null;
+  to: string | number | null;
+}
+export interface ImportItem {
+  row: number;
+  kind: ImportKind;
+  name: string;
+  message?: string;
+  changes: ImportChange[];
+}
+export interface ImportResult {
+  applied: boolean;
+  summary: { create: number; update: number; same: number; error: number; priceChanged: number; stockChanged: number };
+  /** Ошибки первыми, затем изменения; не больше 500 строк. */
+  items: ImportItem[];
+}
 
 /** What the shared barcode catalogue knows about a code — GET /catalog/lookup. */
 export interface CatalogHit {

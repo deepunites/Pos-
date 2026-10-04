@@ -72,7 +72,7 @@ const text = (v: unknown): string | undefined => {
 export function parseAmount(v: unknown): number | undefined {
   if (v === null || v === undefined) return undefined;
   if (typeof v === "number") return Number.isFinite(v) ? v : NaN;
-  let s = String(v).replace(/[\s  ]/g, "").replace(/(сўм|сум|руб|₽|\$|so'm)/gi, "");
+  let s = String(v).replace(/[\s\u00A0\u202F]/g, "").replace(/(сўм|сум|руб|₽|\$|so'm)/gi, "");
   if (s === "") return undefined;
   // «1.234,5» — точка тысяч, запятая дроби; «1,234.5» — наоборот.
   if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
