@@ -10,6 +10,7 @@ import OpenShiftScreen from "./screens/OpenShiftScreen";
 import CloseShiftScreen from "./screens/CloseShiftScreen";
 import { useCartStore } from "./store/cartStore";
 import { ConnectionBar } from "./components/ConnectionStatus";
+import UpdateBanner from "./components/UpdateBanner";
 import { useConnection } from "./services/connection";
 import { flushQueue, loadQueue, onQueueSent, useOfflineQueue, watchQueue } from "./services/offlineQueue";
 import { askPersistentStorage } from "./services/offlineDb";
@@ -281,6 +282,7 @@ function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-dark-950">
       {/* В потоке, а не поверх: кнопки оплаты внизу экрана не закрываются. */}
+      <UpdateBanner />
       <WorkspaceConnectionBar />
       <Workspace
         user={user}
