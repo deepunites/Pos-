@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { productService } from "./product.service.js";
+import { exportProducts, importProducts } from "./product.import.js";
 import { sendSuccess, sendCreated, sendPaginated } from "../../utils/response.js";
 import { handleError } from "../../utils/errors.js";
 import type { ProductQueryInput } from "./product.schema.js";
@@ -22,6 +23,23 @@ export class ProductController {
       sendSuccess(res, product);
     } catch (error) {
       handleError(res, error, 404);
+    }
+  }
+
+  /** Импорт из Excel/CSV: apply=false — проверка («что будет»), true — запись. */
+  async importRows(req: Request, res: Response) {
+    try {
+      sendSuccess(res, await importProducts(req.user!.tenantId, req.user!.id, req.body.rows, req.body.apply));
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+
+  async exportAll(req: Request, res: Response) {
+    try {
+      sendSuccess(res, await exportProducts(req.user!.tenantId));
+    } catch (error) {
+      handleError(res, error);
     }
   }
 
