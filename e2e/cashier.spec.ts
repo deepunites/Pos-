@@ -181,3 +181,42 @@ test("on credit: a new customer pays part now, the rest goes to the debt and is 
   expect(after.totalCashSales - before.totalCashSales).toBe(11500);
   expect(after.totalDebtRepaidCash - before.totalDebtRepaidCash).toBe(20000);
 });
+
+test("a shop receives goods by scanning: a known product gets stock, an unknown barcode becomes a product without a category", async ({ page }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("например, my-shop").fill("demo-market");
+  await page.getByRole("button", { name: "Продолжить" }).click();
+  await page.getByText("Азиза Р.").click();
+  await pressPin(page, "1234");
+  const openShift = page.getByRole("button", { name: "Открыть смену" });
+  await expect(page.getByText(/Сканер готов|Открытие смены/).first()).toBeVisible();
+  if (await openShift.isVisible()) {
+    await page.getByRole("button", { name: "50К" }).click();
+    await openShift.click();
+  }
+  const [milkBefore] = await api<{ currentStock: number }[]>(page, `/products?search=${MILK}`);
+
+  await page.getByRole("button", { name: "Приход" }).click();
+  const scan = page.getByPlaceholder("Сканируйте штрихкод или введите название");
+  await scan.fill(MILK);
+  await scan.press("Enter");
+  await expect(page.getByText("Молоко «Лактис» 3,2% 1 л")).toBeVisible();
+  await page.getByLabel("Количество").fill("10");
+  await page.getByLabel("Цена прихода (за ед.)").fill("9000");
+  await page.getByRole("button", { name: "Добавить в приход" }).click();
+
+  await scan.fill("4780099999990");
+  await scan.press("Enter");
+  await page.getByPlaceholder("Название нового товара").fill("Сок тестовый 1 л");
+  await page.getByLabel("Количество").fill("5");
+  await page.getByLabel("Цена прихода (за ед.)").fill("7000");
+  await page.getByLabel(/Цена продажи/).fill("9000");
+  await page.getByRole("button", { name: "Добавить в приход" }).click();
+  await page.getByRole("button", { name: "Оформить приход" }).click();
+  await expect(page.getByText("Приход оформлен")).toBeVisible();
+
+  const [milkAfter] = await api<{ currentStock: number }[]>(page, `/products?search=${MILK}`);
+  expect(milkAfter.currentStock).toBe(milkBefore.currentStock + 10);
+  const [juice] = await api<{ name: string; barcode: string; categoryId: string | null; currentStock: number; price: number }[]>(page, "/products?search=4780099999990");
+  expect(juice).toMatchObject({ name: "Сок тестовый 1 л", barcode: "4780099999990", categoryId: null, currentStock: 5, price: 9000 });
+});
