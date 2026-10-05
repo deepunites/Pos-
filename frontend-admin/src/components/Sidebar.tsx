@@ -22,7 +22,8 @@ import {
 } from "lucide-react";
 import { useUIStore } from "../store/uiStore";
 import { useAuthStore } from "../store/authStore";
-import { canOpenPath } from "../utils/access";
+import { canOpenPath, isRestaurantOnly } from "../utils/access";
+import { useSettings } from "../hooks/useSettings";
 import clsx from "clsx";
 
 const navItems = [
@@ -48,7 +49,12 @@ export default function Sidebar() {
   const user = useAuthStore((s) => s.user);
   // Повару из всего меню положена одна «Кухня» — остальное не показываем,
   // чтобы он не упирался в пункты, которые всё равно не откроются.
-  const items = navItems.filter((item) => canOpenPath(user?.role, item.to));
+  // Магазину не нужны тех карты, категории, кухня и столы. Пока тип точки
+  // неизвестен, их тоже не показываем — иначе у магазина пункты мелькнут и
+  // пропадут. Повару «Кухня» нужна всегда: это его единственная страница.
+  const { data: settings, isPending } = useSettings();
+  const hideRestaurant = user?.role !== "kitchen" && (isPending || settings?.businessType === "retail");
+  const items = navItems.filter((item) => canOpenPath(user?.role, item.to) && !(hideRestaurant && isRestaurantOnly(item.to)));
   const userInitial = user?.firstName?.[0] || user?.email?.[0] || "U";
   const userName = user ? `${user.firstName} ${user.lastName}` : "Пользователь";
   const userEmail = user?.email || "";

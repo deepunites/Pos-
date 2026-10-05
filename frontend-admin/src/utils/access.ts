@@ -49,6 +49,16 @@ export function canOpenPath(role: string | null | undefined, path: string): bool
   return false;
 }
 
+/**
+ * Разделы кафе и ресторана. В магазине их нет в меню: рецептур, кухни и столов
+ * там не бывает, а товар ищут сканером и поиском, не по категориям.
+ */
+const RESTAURANT_ONLY = ["/tech-cards", "/categories", "/kitchen", "/tables"];
+
+export function isRestaurantOnly(path: string): boolean {
+  return RESTAURANT_ONLY.includes(path);
+}
+
 /** Куда вести роль сразу после входа. */
 export function homePathFor(role?: string | null): string {
   return role === "kitchen" ? KITCHEN_PATH : "/";
