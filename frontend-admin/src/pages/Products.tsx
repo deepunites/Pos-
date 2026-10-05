@@ -404,7 +404,7 @@ export default function Products() {
         open={!!deleteId}
         danger
         title="Удалить товар?"
-        description="Товар пропадёт из каталога и с кассы. История продаж и приходов останется."
+        description="Товар пропадёт из каталога и с кассы. Если его ни разу не продавали и не приходовали — удалится насовсем; если продавали — снимется с продажи, а чеки и приходы останутся."
         confirmLabel="Удалить"
         loading={deleteProduct.isPending}
         onConfirm={handleDelete}

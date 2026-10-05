@@ -292,7 +292,9 @@ socket.on("order:created", (order) => { /* … */ });
 | GET | `/api/products/:id/tech-card-cost` | Себестоимость по техкарте | любой сотрудник |
 | POST | `/api/products` | Создать товар | admin, manager |
 | PUT | `/api/products/:id` | Изменить товар | admin, manager |
-| DELETE | `/api/products/:id` | Удалить товар | admin, manager |
+| DELETE | `/api/products/:id` | Удалить товар (без истории — насовсем, с историей — снять с продажи) | admin, manager |
+| POST | `/api/products/import` | Импорт из Excel/CSV: проверка или загрузка | admin, manager |
+| GET | `/api/products/export` | Все товары в продаже — для Excel/CSV | admin, manager |
 | POST | `/api/products/:id/stock` | Поправить остаток | admin, manager |
 
 #### GET /api/products
@@ -380,6 +382,27 @@ socket.on("order:created", (order) => { /* … */ });
 ```jsonc
 { "quantity": -2, "reason": "Бой при разгрузке" }
 ```
+
+#### DELETE /api/products/:id
+
+Удалить товар. Кому: admin, manager.
+
+Товар, который ни разу не продавали и не приходовали, удаляется насовсем — вместе с движениями остатка, внесёнными вручную или импортом. Товар с продажами или приходами (и ингредиент из техкарты) только снимается с продажи (`isActive: false`): на него ссылаются чеки, приходы и отчёты. Ответ: `{ removed: "deleted" | "archived" }`.
+
+#### POST /api/products/import
+
+Импорт товаров из файла. Кому: admin, manager. Админка сама читает Excel/CSV и присылает строки.
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `rows` | `array` | до 10 000 строк: `row` (номер в файле), `name`, `barcode`, `sku`, `category`, `unit`, `price`, `costPrice`, `stock`, `minStock` — числа можно строкой («9 000», «13 000,50») |
+| `apply` | `bool` | `false` — только проверка, ничего не пишет; `true` — загрузка |
+
+Товар ищется по штрихкоду (ведущие нули не важны), потом по артикулу: нашёлся — обновится, нет — добавится. Остаток ставится как в файле, разница пишется в движения с пометкой «Импорт»; пустая ячейка поле не меняет. Ответ: `summary` (create, update, same, error, priceChanged, stockChanged) и `items` — до 500 строк, ошибки первыми, с «было → стало».
+
+#### GET /api/products/export
+
+Все товары в продаже (снятые с продажи не попадают): название, штрихкод, артикул, категория, ед. изм., цены, остаток (`null`, если не считается), мин. остаток, ИКПУ. Кому: admin, manager.
 
 ### База штрихкодов
 

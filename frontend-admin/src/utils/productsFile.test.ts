@@ -5,7 +5,7 @@ import { autoMap, decodeCsv, findHeaderRow, parseCsv, productsCsv, toImportRows,
 
 describe("columns", () => {
   it("knows our own export and template", () => {
-    const m = autoMap(["Название", "Штрихкод", "Артикул", "Категория", "Ед. изм.", "Цена продажи", "Себестоимость", "Остаток", "Мин. остаток", "Активен", "ИКПУ"]);
+    const m = autoMap(["Название", "Штрихкод", "Артикул", "Категория", "Ед. изм.", "Цена продажи", "Себестоимость", "Остаток", "Мин. остаток", "ИКПУ"]);
     expect(m).toEqual({ name: 0, barcode: 1, sku: 2, category: 3, unit: 4, price: 5, costPrice: 6, stock: 7, minStock: 8 });
   });
 
@@ -61,12 +61,12 @@ describe("rows", () => {
 });
 
 describe("export", () => {
-  const p: ExportProduct = { name: "Сок; яблочный", barcode: "054881005500", sku: null, category: "Напитки", unit: "кг", price: 14000.5, costPrice: 11000, stock: null, minStock: 0, active: true, ikpu: null };
+  const p: ExportProduct = { name: "Сок; яблочный", barcode: "054881005500", sku: null, category: "Напитки", unit: "кг", price: 14000.5, costPrice: 11000, stock: null, minStock: 0, ikpu: null };
 
   it("writes CSV the Russian Excel opens: BOM, semicolons, comma decimals", () => {
     const csv = productsCsv([p]);
     expect(csv.startsWith("\uFEFFНазвание;Штрихкод;")).toBe(true);
-    expect(csv.split("\r\n")[1]).toBe('"Сок; яблочный";054881005500;;Напитки;кг;14000,5;11000;;0;да;');
+    expect(csv.split("\r\n")[1]).toBe('"Сок; яблочный";054881005500;;Напитки;кг;14000,5;11000;;0;');
   });
 
   it("reads its own export back to the same columns", () => {
