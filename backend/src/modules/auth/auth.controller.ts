@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { permissionsOf } from "../users/permissions.js";
 import { authService } from "./auth.service.js";
 import { sendSuccess } from "../../utils/response.js";
 import { handleError } from "../../utils/errors.js";
@@ -64,8 +65,14 @@ export class AuthController {
     }
   }
 
+  // Права — свежие из базы: касса спрашивает их, чтобы снятая администратором
+  // галочка спрятала кнопку без перевхода кассира.
   async me(req: Request, res: Response) {
-    sendSuccess(res, req.user);
+    try {
+      sendSuccess(res, { ...req.user, permissions: await permissionsOf(req.user!) });
+    } catch (error) {
+      handleError(res, error);
+    }
   }
 }
 

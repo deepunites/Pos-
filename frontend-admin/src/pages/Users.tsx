@@ -9,14 +9,46 @@ import toast from "react-hot-toast";
 import { Plus, Pencil } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import { apiErrorMessage } from "../utils/apiError";
-import type { User } from "../services";
+import Checkbox from "../components/Checkbox";
+import type { Rights, User } from "../services";
 
 const roles = ["admin", "manager", "cashier", "waiter", "kitchen"];
 const roleLabels: Record<string, string> = { admin: "Администратор", manager: "Менеджер", cashier: "Кассир", waiter: "Официант", kitchen: "Кухня" };
 
-const emptyCreateForm = { email: "", password: "", firstName: "", lastName: "", role: "cashier", pin: "" };
-type EditForm = { firstName: string; lastName: string; phone: string; role: string; password: string; pin: string };
-const emptyEditForm: EditForm = { firstName: "", lastName: "", phone: "", role: "cashier", password: "", pin: "" };
+// Права кассира: по умолчанию всё можно, администратор снимает галочки.
+const ALL_RIGHTS: Rights = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true };
+const RIGHTS: { key: keyof Rights; label: string; description: string; off: string }[] = [
+  { key: "canSellOnDebt", label: "Продажа в долг", description: "Кнопка «В долг» на кассе. Принимать оплату долга можно и без неё.", off: "без долга" },
+  { key: "canReceiveStock", label: "Приход товара", description: "Оформлять приход на кассе и заводить в нём новые товары.", off: "без прихода" },
+  {
+    key: "canSeeExpectedCash",
+    label: "Видит сумму смены",
+    description: "Без галочки — «слепое» закрытие: кассир пересчитывает наличные, не зная, сколько должно быть. Расхождение видит администратор.",
+    off: "слепая смена",
+  },
+];
+/** Права действуют на тех, кто работает за кассой; администратору и менеджеру можно всё. */
+const hasRights = (role: string) => role === "cashier" || role === "waiter";
+const rightsOf = (user: User): Rights => ({
+  canSellOnDebt: user.canSellOnDebt ?? true,
+  canReceiveStock: user.canReceiveStock ?? true,
+  canSeeExpectedCash: user.canSeeExpectedCash ?? true,
+});
+
+function RightsFields({ rights, onChange }: { rights: Rights; onChange: (rights: Rights) => void }) {
+  return (
+    <fieldset className="space-y-3 rounded-md border border-gray-200 p-4">
+      <legend className="px-1 text-sm font-semibold text-gray-700">Права на кассе</legend>
+      {RIGHTS.map((r) => (
+        <Checkbox key={r.key} label={r.label} description={r.description} checked={rights[r.key]} onChange={(e) => onChange({ ...rights, [r.key]: e.target.checked })} />
+      ))}
+    </fieldset>
+  );
+}
+
+const emptyCreateForm = { email: "", password: "", firstName: "", lastName: "", role: "cashier", pin: "", ...ALL_RIGHTS };
+type EditForm = { firstName: string; lastName: string; phone: string; role: string; password: string; pin: string } & Rights;
+const emptyEditForm: EditForm = { firstName: "", lastName: "", phone: "", role: "cashier", password: "", pin: "", ...ALL_RIGHTS };
 
 // PIN — 4–10 цифр, как на бэкенде (backend/src/modules/users/user.schema.ts).
 const PIN_PATTERN = /^\d{4,10}$/;
@@ -45,8 +77,8 @@ export default function Users() {
     // пустое поле в форме означает «не менять», а не «удалить пароль».
     // Пустой pin для явного снятия PIN — отдельная кнопка ниже, не это поле.
     mutationFn: (data: { id: string; form: EditForm }) => {
-      const { firstName, lastName, phone, role, password, pin } = data.form;
-      const payload: Record<string, unknown> = { firstName, lastName, phone, role };
+      const { firstName, lastName, phone, role, password, pin, canSellOnDebt, canReceiveStock, canSeeExpectedCash } = data.form;
+      const payload: Record<string, unknown> = { firstName, lastName, phone, role, canSellOnDebt, canReceiveStock, canSeeExpectedCash };
       if (password) payload.password = password;
       if (pin) payload.pin = pin;
       return userService.update(data.id, payload);
@@ -64,7 +96,7 @@ export default function Users() {
 
   const openEdit = (user: User) => {
     setEditingId(user.id);
-    setEditForm({ firstName: user.firstName || "", lastName: user.lastName || "", phone: user.phone || "", role: user.role, password: "", pin: "" });
+    setEditForm({ firstName: user.firstName || "", lastName: user.lastName || "", phone: user.phone || "", role: user.role, password: "", pin: "", ...rightsOf(user) });
   };
 
   const pinInvalid = form.pin.length > 0 && !PIN_PATTERN.test(form.pin);
@@ -113,6 +145,13 @@ export default function Users() {
                     ) : (
                       <span className="text-xs text-gray-500">нет входа на кассе</span>
                     )}
+                    {hasRights(user.role) && RIGHTS.some((r) => !rightsOf(user)[r.key]) && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {RIGHTS.filter((r) => !rightsOf(user)[r.key]).map((r) => (
+                          <Badge key={r.key} variant="warning">{r.off}</Badge>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="p-4"><Badge variant={user.isActive ? "success" : "gray"}>{user.isActive ? "Активен" : "Неактивен"}</Badge></td>
                   <td className="p-4 text-right">
@@ -148,6 +187,7 @@ export default function Users() {
             <p className="mt-1 text-xs text-gray-500">С этим PIN сотрудник входит на кассе, нажав своё имя — email и пароль там не нужны.</p>
             {pinInvalid && <p className="mt-1 text-xs text-danger-500">PIN — от 4 до 10 цифр</p>}
           </div>
+          {hasRights(form.role) && <RightsFields rights={form} onChange={(rights) => setForm({ ...form, ...rights })} />}
           <div className="flex justify-end gap-3 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="btn-secondary">Отмена</button><button type="submit" disabled={createMutation.isPending || pinInvalid} className="btn-primary">{createMutation.isPending ? "Создание..." : "Создать"}</button></div>
         </form>
       </Modal>
@@ -171,6 +211,7 @@ export default function Users() {
             />
             {editPinInvalid && <p className="mt-1 text-xs text-danger-500">PIN — от 4 до 10 цифр</p>}
           </div>
+          {hasRights(editForm.role) && <RightsFields rights={editForm} onChange={(rights) => setEditForm({ ...editForm, ...rights })} />}
           <div className="flex justify-end gap-3 pt-2"><button type="button" onClick={() => setEditingId(null)} className="btn-secondary">Отмена</button><button type="submit" disabled={updateMutation.isPending || editPinInvalid} className="btn-primary">{updateMutation.isPending ? "Сохранение..." : "Сохранить"}</button></div>
         </form>
       </Modal>

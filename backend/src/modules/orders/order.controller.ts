@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { requirePermission } from "../users/permissions.js";
 import { orderService, OrderTotalChangedError } from "./order.service.js";
 import { sendSuccess, sendCreated, sendPaginated } from "../../utils/response.js";
 import { handleError } from "../../utils/errors.js";
@@ -47,6 +48,9 @@ export class OrderController {
   async checkout(req: Request, res: Response) {
     try {
       const tenantId = req.user!.tenantId;
+      if (req.body.payments?.some((part: { method: string }) => part.method === "debt")) {
+        await requirePermission(req.user!, "canSellOnDebt");
+      }
       const idem = idempotencyFrom(req, "POST /orders/checkout");
       // Повтор с тем же Idempotency-Key отвечает тем, что создал первый запрос.
       const { value: order, replayed } = await withIdempotency(

@@ -17,13 +17,15 @@ interface SidePanelProps {
   onCustomer: () => void;
   onPay: (method: PayMode) => void;
   canPay: boolean;
+  /** Галочка «Продажа в долг» в карточке кассира; без неё кнопки нет. */
+  canDebt?: boolean;
   /** Нет связи: картой и по QR не платят, только наличными (офлайн-режим). */
   offline?: boolean;
 }
 
 /** Total, the numeric keypad that feeds the scan field, and the three payment buttons. */
 export default function SidePanel(props: SidePanelProps) {
-  const { total, positions, customerName, parts, armed, onDisarm, onKey, onBackspace, onClear, onMultiply, onEnter, onCustomer, onPay, canPay, offline = false } = props;
+  const { total, positions, customerName, parts, armed, onDisarm, onKey, onBackspace, onClear, onMultiply, onEnter, onCustomer, onPay, canPay, canDebt = true, offline = false } = props;
   const { figure, symbol, suffix } = parts(total);
 
   return (
@@ -99,11 +101,13 @@ export default function SidePanel(props: SidePanelProps) {
           <User className="i" />
           {customerName ? customerName : "Клиент"}
         </button>
-        <button className="sh-debt" onClick={() => onPay("debt")} disabled={!canPay || offline} title={offline ? "Без связи в долг не записать" : "В долг клиенту"}>
-          <NotebookPen className="i" />
-          В долг
-          <span className="sh-fk">F11</span>
-        </button>
+        {canDebt && (
+          <button className="sh-debt" onClick={() => onPay("debt")} disabled={!canPay || offline} title={offline ? "Без связи в долг не записать" : "В долг клиенту"}>
+            <NotebookPen className="i" />
+            В долг
+            <span className="sh-fk">F11</span>
+          </button>
+        )}
       </div>
 
       <div className="sh-pay">

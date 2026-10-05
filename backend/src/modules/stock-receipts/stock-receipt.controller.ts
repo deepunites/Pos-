@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { requirePermission } from "../users/permissions.js";
 import { nextInvoiceNumber, stockReceiptService } from "./stock-receipt.service.js";
 import prisma from "../../config/database.js";
 import { sendSuccess, sendPaginated } from "../../utils/response.js";
@@ -9,6 +10,7 @@ export class StockReceiptController {
   async create(req: Request, res: Response) {
     try {
       const tenantId = req.user!.tenantId;
+      await requirePermission(req.user!, "canReceiveStock");
       const idem = idempotencyFrom(req, "POST /stock-receipts");
       // Повтор с тем же Idempotency-Key отвечает тем, что создал первый запрос.
       const { value: receipt, replayed } = await withIdempotency(
