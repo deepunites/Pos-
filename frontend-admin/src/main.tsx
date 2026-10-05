@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import App from "./App";
 import "./index.css";
+import { installErrorReporting } from "./services/errorReport";
+
+// Ошибки админки — владельцу в Telegram и Sentry через сервер (services/errorReport.ts).
+if (import.meta.env.PROD) installErrorReporting();
 
 const queryClient = new QueryClient({
   defaultOptions: {

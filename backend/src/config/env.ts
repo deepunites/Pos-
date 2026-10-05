@@ -38,6 +38,10 @@ const envSchema = z.object({
   OFF_BASE_URL: z.string().url().optional(),
   // The national catalogue of Uzbekistan (tasnif.soliq.uz) is asked the same way; tests stub it too.
   TASNIF_BASE_URL: z.string().url().optional(),
+  // Уведомления об ошибках владельцу (utils/alerts.ts). Без них — молчим.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
+  SENTRY_DSN: z.string().url().optional(),
 });
 
 // Значения из .env.example. В проде с ними сервер подписывал бы токены

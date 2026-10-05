@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { alerts, isBug, requestContext } from "./alerts.js";
 import { Prisma } from "@prisma/client";
 import { logger } from "./logger.js";
 import { sendError } from "./response.js";
@@ -85,5 +86,7 @@ export function handleError(res: Response, error: unknown, fallbackStatus = 400)
       name: error instanceof Error ? error.name : undefined,
     });
   }
+  // Ошибка кода или сбой базы — владельцу в Telegram и Sentry; отказы по делу — нет.
+  if (isBug(error, status)) alerts.report(error, requestContext(res.req as Parameters<typeof requestContext>[0], status));
   sendError(res, message, status);
 }

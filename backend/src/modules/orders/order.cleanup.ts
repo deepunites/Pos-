@@ -1,4 +1,5 @@
 import prisma from "../../config/database.js";
+import { alerts } from "../../utils/alerts.js";
 import { logger } from "../../utils/logger.js";
 import { releaseStock, stockUnitsFor, type Reservation } from "../inventory/stock.helpers.js";
 import { inTransaction } from "../../utils/transaction.js";
@@ -65,18 +66,20 @@ export async function cancelStalePendingOrders(maxAgeMinutes: number): Promise<n
 
 export function startStaleOrderSweeper(maxAgeMinutes: number, intervalMs = 5 * 60 * 1000): NodeJS.Timeout {
   const timer = setInterval(() => {
-    cancelStalePendingOrders(maxAgeMinutes).catch((error) =>
+    cancelStalePendingOrders(maxAgeMinutes).catch((error) => {
       logger.error("Stale order sweep failed", {
         message: error instanceof Error ? error.message : String(error),
-      })
-    );
+      });
+      alerts.report(error, { where: "фоновая отмена неоплаченных заказов" });
+    });
     // Ключи идемпотентности старше суток больше не нужны: повтор приходит
     // через секунды или минуты, а не на следующий день.
-    purgeIdempotencyKeys().catch((error) =>
+    purgeIdempotencyKeys().catch((error) => {
       logger.error("Idempotency key purge failed", {
         message: error instanceof Error ? error.message : String(error),
-      })
-    );
+      });
+      alerts.report(error, { where: "фоновая чистка ключей идемпотентности" });
+    });
   }, intervalMs);
   timer.unref();
   return timer;
