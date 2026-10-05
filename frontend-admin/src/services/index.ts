@@ -155,6 +155,7 @@ export interface User {
   canSellOnDebt?: boolean;
   canReceiveStock?: boolean;
   canSeeExpectedCash?: boolean;
+  canRefund?: boolean;
 }
 
 export interface Payment {
@@ -338,7 +339,7 @@ export const categoryService = {
 };
 
 /** Права кассира — галочки в карточке сотрудника. */
-export type Rights = { canSellOnDebt: boolean; canReceiveStock: boolean; canSeeExpectedCash: boolean };
+export type Rights = { canSellOnDebt: boolean; canReceiveStock: boolean; canSeeExpectedCash: boolean; canRefund: boolean };
 
 export const userService = {
   list: (params?: Record<string, string | number | boolean | undefined>) => api.get<ApiResponse<User[]>>("/users", { params }),

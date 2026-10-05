@@ -10,9 +10,10 @@ export interface Permissions {
   canSellOnDebt: boolean;
   canReceiveStock: boolean;
   canSeeExpectedCash: boolean;
+  canRefund: boolean;
 }
 
-const ALL: Permissions = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true };
+const ALL: Permissions = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true, canRefund: true };
 
 /** Права, сохранённые при входе, поверх них — свежие с сервера. Неизвестное — разрешено: решает сервер. */
 export function mergePermissions(saved?: Partial<Permissions>, fresh?: Partial<Permissions>): Permissions {

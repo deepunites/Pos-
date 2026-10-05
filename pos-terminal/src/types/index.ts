@@ -173,6 +173,10 @@ export interface CashShift {
   totalDebtSales?: number;
   totalDebtRepaidCash?: number;
   totalDebtRepaidCard?: number;
+  /** Возвраты товара на этой кассе: наличными из ящика, на карту, в счёт долга. */
+  totalReturnsCash?: number;
+  totalReturnsCard?: number;
+  totalReturnsDebt?: number;
   totalTips: number;
   totalRefunds: number;
   expectedCash?: number;

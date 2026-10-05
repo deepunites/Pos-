@@ -21,6 +21,7 @@ export const createUserSchema = z.object({
   canSellOnDebt: z.boolean().optional(),
   canReceiveStock: z.boolean().optional(),
   canSeeExpectedCash: z.boolean().optional(),
+  canRefund: z.boolean().optional(),
 });
 
 export const updateUserSchema = createUserSchema.omit({ password: true }).partial().extend({

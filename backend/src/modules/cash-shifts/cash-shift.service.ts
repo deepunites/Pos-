@@ -1,4 +1,5 @@
 import type { ShiftQueryInput } from "./cash-shift.schema.js";
+import { returnService } from "../returns/return.service.js";
 import { Prisma } from "@prisma/client";
 import prisma from "../../config/database.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../utils/errors.js";
@@ -71,6 +72,10 @@ export class CashShiftService {
     });
     const totalRefunds = refunds.reduce((sum, p) => sum + p.amount, 0);
 
+    // Возвраты товара на этой кассе (и по чекам прошлых смен): наличные кассир
+    // отдал из ящика — их там больше нет.
+    const returns = await returnService.shiftTotals(tenantId, shiftId);
+
     // Продажа в долг — тоже продажа смены, но денег в ящик она не приносит.
     const totalSales = totalCashSales + totalCardSales + totalQrSales + totalDebtSales;
     // Возврат не создаёт новой записи, а переводит платёж в «refunded», и тот
@@ -79,7 +84,7 @@ export class CashShiftService {
     // вычиталась сумма всех возвратов: возврат наличных учитывался дважды
     // (ложный излишек при закрытии), а возврат по карте или QR забирал из
     // ящика деньги, которых там никогда не было (ложная недостача).
-    const expectedCash = openingCash + totalCashSales + totalDebtRepaidCash;
+    const expectedCash = openingCash + totalCashSales + totalDebtRepaidCash - returns.totalReturnsCash;
 
     return {
       totalSales,
@@ -91,6 +96,7 @@ export class CashShiftService {
       totalDebtRepaidCard,
       totalTips,
       totalRefunds,
+      ...returns,
       expectedCash,
     };
   }

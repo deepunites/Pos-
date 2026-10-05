@@ -5,16 +5,19 @@ import { ForbiddenError } from "../../utils/errors.js";
 // разрешено всё, галочки касаются остальных ролей. Читаются из базы при каждом
 // действии, а не из токена: снятая галочка действует сразу, без перевхода.
 
-export const PERMISSIONS = ["canSellOnDebt", "canReceiveStock", "canSeeExpectedCash"] as const;
+export const PERMISSIONS = ["canSellOnDebt", "canReceiveStock", "canSeeExpectedCash", "canRefund"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 export type Permissions = Record<Permission, boolean>;
 
-const ALL: Permissions = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true };
+const ALL: Permissions = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true, canRefund: true };
+const NONE: Permissions = { canSellOnDebt: false, canReceiveStock: false, canSeeExpectedCash: false, canRefund: false };
+const SELECT = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true, canRefund: true } as const;
 
 const DENIED: Record<Permission, string> = {
   canSellOnDebt: "Продажа в долг вам закрыта — обратитесь к администратору",
   canReceiveStock: "Оформлять приход вам закрыто — обратитесь к администратору",
   canSeeExpectedCash: "Сумма смены вам закрыта",
+  canRefund: "Возврат товара вам закрыт — обратитесь к администратору",
 };
 
 export const fullAccess = (role: string) => role === "admin" || role === "manager";
@@ -22,17 +25,17 @@ export const fullAccess = (role: string) => role === "admin" || role === "manage
 /** Права из уже прочитанной строки сотрудника (вход по PIN, по паролю). */
 export function permissionsFromRow(row: { role: string } & Permissions): Permissions {
   if (fullAccess(row.role)) return ALL;
-  return { canSellOnDebt: row.canSellOnDebt, canReceiveStock: row.canReceiveStock, canSeeExpectedCash: row.canSeeExpectedCash };
+  return { canSellOnDebt: row.canSellOnDebt, canReceiveStock: row.canReceiveStock, canSeeExpectedCash: row.canSeeExpectedCash, canRefund: row.canRefund };
 }
 
 export async function permissionsOf(user: { id: string; role: string }): Promise<Permissions> {
   if (fullAccess(user.role)) return ALL;
   const row = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true },
+    select: SELECT,
   });
   // Сотрудника нет (удалён) — ничего не разрешаем.
-  return row ?? { canSellOnDebt: false, canReceiveStock: false, canSeeExpectedCash: false };
+  return row ?? NONE;
 }
 
 export async function requirePermission(user: { id: string; role: string }, permission: Permission): Promise<void> {
@@ -48,6 +51,9 @@ const SHIFT_MONEY = [
   "totalDebtSales",
   "totalDebtRepaidCash",
   "totalDebtRepaidCard",
+  "totalReturnsCash",
+  "totalReturnsCard",
+  "totalReturnsDebt",
   "totalTips",
   "totalRefunds",
   "expectedCash",

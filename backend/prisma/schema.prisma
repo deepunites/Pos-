@@ -52,40 +52,43 @@ model Tenant {
   techCards           TechCard[]
   customers           Customer[]
   customerDebtEntries CustomerDebtEntry[]
+  saleReturns         SaleReturn[]
 
   @@map("tenants")
 }
 
 model User {
-  id           String    @id @default(uuid())
-  tenantId     String    @map("tenant_id")
-  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  email        String
-  passwordHash String    @map("password_hash")
-  firstName    String    @map("first_name")
-  lastName     String    @map("last_name")
-  phone        String?
-  pin          String?
-  role         String    @default("cashier")
-  avatarUrl    String?   @map("avatar_url")
-  isActive     Boolean   @default(true) @map("is_active")
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email              String
+  passwordHash       String    @map("password_hash")
+  firstName          String    @map("first_name")
+  lastName           String    @map("last_name")
+  phone              String?
+  pin                String?
+  role               String    @default("cashier")
+  avatarUrl          String?   @map("avatar_url")
+  isActive           Boolean   @default(true) @map("is_active")
   // Права кассира (у администратора и менеджера разрешено всё). По умолчанию
   // всё можно — как было до них; администратор снимает галочки в карточке
   // сотрудника. Проверяются на сервере при каждом действии, не из токена:
   // снятая галочка действует сразу, без перевхода.
-  canSellOnDebt      Boolean @default(true) @map("can_sell_on_debt")
+  canSellOnDebt      Boolean   @default(true) @map("can_sell_on_debt")
   /// Приход товара на кассе — и новые товары в нём.
-  canReceiveStock    Boolean @default(true) @map("can_receive_stock")
+  canReceiveStock    Boolean   @default(true) @map("can_receive_stock")
   /// false — «слепое» закрытие смены: сколько наличных должно быть, кассир не видит.
-  canSeeExpectedCash Boolean @default(true) @map("can_see_expected_cash")
+  canSeeExpectedCash Boolean   @default(true) @map("can_see_expected_cash")
+  /// Возврат товара на кассе — по чеку и без чека.
+  canRefund          Boolean   @default(true) @map("can_refund")
   // Счётчик для отзыва refresh-токенов: он пишется в токен обновления и
   // сверяется при каждом обновлении. Смена пароля увеличивает счётчик, и все
   // выданные ранее refresh-токены перестают работать. Без этого украденный
   // токен жил свои семь дней, а смена пароля его не отменяла.
-  tokenVersion Int       @default(0) @map("token_version")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  tokenVersion       Int       @default(0) @map("token_version")
+  lastLoginAt        DateTime? @map("last_login_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   orders        Order[]
   auditLogs     AuditLog[]
@@ -93,6 +96,7 @@ model User {
   inventory     InventoryMovement[]
   stockReceipts StockReceipt[]
   cashShifts    CashShift[]
+  saleReturns   SaleReturn[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -199,6 +203,7 @@ model Product {
   orderItems        OrderItem[]
   inventory         InventoryMovement[]
   stockReceiptItems StockReceiptItem[]
+  returnItems       SaleReturnItem[]
 
   @@index([tenantId, categoryId])
   @@index([tenantId, barcode])
@@ -322,6 +327,7 @@ model Order {
   payments    Payment[]
   debtEntries CustomerDebtEntry[]
   receipts    Receipt[]
+  saleReturns SaleReturn[]
 
   // Номер заказа уникален в пределах точки. На SQLite это держалось на том,
   // что писатель в базе один; на Postgres — на счётчике OrderCounter, а это
@@ -387,7 +393,8 @@ model OrderItem {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  modifiers OrderItemModifier[]
+  modifiers   OrderItemModifier[]
+  returnItems SaleReturnItem[]
 
   @@index([orderId])
   @@index([productId])
@@ -571,6 +578,11 @@ model CashShift {
   totalDebtSales      Float     @default(0) @map("total_debt_sales")
   totalDebtRepaidCash Float     @default(0) @map("total_debt_repaid_cash")
   totalDebtRepaidCard Float     @default(0) @map("total_debt_repaid_card")
+  // Возвраты товара на этой кассе: наличные ушли из ящика, карта — на карту
+  // покупателя, долг — уменьшен у клиента.
+  totalReturnsCash    Float     @default(0) @map("total_returns_cash")
+  totalReturnsCard    Float     @default(0) @map("total_returns_card")
+  totalReturnsDebt    Float     @default(0) @map("total_returns_debt")
   difference          Float?    @map("difference")
   notes               String?
   openedAt            DateTime  @default(now()) @map("opened_at")
@@ -578,7 +590,8 @@ model CashShift {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  orders Order[]
+  orders      Order[]
+  saleReturns SaleReturn[]
 
   @@index([tenantId, status])
   @@map("cash_shifts")
@@ -663,4 +676,56 @@ model CustomerDebtEntry {
   @@index([tenantId, customerId, createdAt])
   @@index([cashShiftId])
   @@map("customer_debt_entries")
+}
+
+/// Возврат товара на кассе (2026-10-05). По чеку — orderId и строки чека,
+/// без чека — товары по текущей цене. Деньги отдаёт кассир: наличными, на карту
+/// или в счёт долга клиента. Товар возвращается на склад, брак — нет.
+model SaleReturn {
+  id          String     @id @default(uuid())
+  tenantId    String     @map("tenant_id")
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// Номер возврата в точке: 1, 2, 3…
+  number      Int
+  orderId     String?    @map("order_id")
+  order       Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  cashShiftId String?    @map("cash_shift_id")
+  cashShift   CashShift? @relation(fields: [cashShiftId], references: [id], onDelete: SetNull)
+  userId      String     @map("user_id")
+  user        User       @relation(fields: [userId], references: [id])
+  /// cash | card | debt
+  method      String
+  amount      Float
+  reason      String?
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  items SaleReturnItem[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, createdAt])
+  @@index([orderId])
+  @@index([cashShiftId])
+  @@map("sale_returns")
+}
+
+model SaleReturnItem {
+  id          String     @id @default(uuid())
+  returnId    String     @map("return_id")
+  saleReturn  SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItemId String?    @map("order_item_id")
+  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  productId   String     @map("product_id")
+  product     Product    @relation(fields: [productId], references: [id])
+  name        String
+  /// Штучный товар — штук; весовой — граммов в weightGrams, quantity = 1.
+  quantity    Int        @default(1)
+  weightGrams Float?     @map("weight_grams")
+  amount      Float
+  /// Брак: на склад не возвращается.
+  defective   Boolean    @default(false)
+
+  @@index([returnId])
+  @@index([orderItemId])
+  @@index([productId])
+  @@map("sale_return_items")
 }

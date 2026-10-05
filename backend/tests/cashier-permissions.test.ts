@@ -47,7 +47,7 @@ describe("Cashier permissions", () => {
 
   it("allow everything until the admin takes a right away", async () => {
     const me = await call("GET", "/auth/me", cashier);
-    expect(me.body.data.permissions).toEqual({ canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true });
+    expect(me.body.data.permissions).toEqual({ canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true, canRefund: true });
     const user = await call("GET", `/users/${cashierId}`, admin);
     expect(user.body.data).toMatchObject({ canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true });
   });
@@ -58,7 +58,7 @@ describe("Cashier permissions", () => {
     expect(res.body.data).toMatchObject({ canSellOnDebt: false, canReceiveStock: false, canSeeExpectedCash: false });
     expect((await call("PUT", `/users/${cashierId}`, cashier, { canSellOnDebt: true })).status).toBe(403);
     // без перевхода: касса узнаёт о снятой галочке из /auth/me
-    expect((await call("GET", "/auth/me", cashier)).body.data.permissions).toEqual({ canSellOnDebt: false, canReceiveStock: false, canSeeExpectedCash: false });
+    expect((await call("GET", "/auth/me", cashier)).body.data.permissions).toEqual({ canSellOnDebt: false, canReceiveStock: false, canSeeExpectedCash: false, canRefund: true });
   });
 
   it("stop a debt sale, but not a sale for money", async () => {
@@ -106,6 +106,6 @@ describe("Cashier permissions", () => {
 
   it("never limit the admin or the manager", async () => {
     const res = await call("POST", "/auth/login", admin, { email: "admin@test.com", password: "admin123" });
-    expect(res.body.data.user.permissions).toEqual({ canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true });
+    expect(res.body.data.user.permissions).toEqual({ canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true, canRefund: true });
   });
 });
