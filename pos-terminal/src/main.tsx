@@ -13,6 +13,7 @@ import "@fontsource/ibm-plex-sans-condensed/500.css";
 import "@fontsource/ibm-plex-sans-condensed/600.css";
 import "./index.css";
 import { watchAppUpdate } from "./services/appUpdate";
+import { installErrorReporting } from "./services/errorReport";
 
 watchConnection();
 
@@ -20,6 +21,8 @@ watchConnection();
 // Новую версию касса ищет сама и включает её в паузе между продажами
 // (services/appUpdate.ts).
 if (import.meta.env.PROD) watchAppUpdate();
+// Ошибки кассы — владельцу в Telegram и Sentry через сервер (services/errorReport.ts).
+if (import.meta.env.PROD) installErrorReporting();
 
 // Apply the saved theme before the first paint, synchronously, so the app
 // never flashes dark before switching to a saved light preference.

@@ -14,6 +14,7 @@ import { initSocketIO } from "./modules/orders/order.gateway.js";
 import { startStaleOrderSweeper } from "./modules/orders/order.cleanup.js";
 import { setSocketIO } from "./modules/orders/order.service.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import { alerts } from "./utils/alerts.js";
 import { apiLimiter } from "./middleware/rateLimiter.js";
 import { logger } from "./utils/logger.js";
 
@@ -33,6 +34,7 @@ import receiptRoutes from "./api/receipts.routes.js";
 import auditRoutes from "./api/audit.routes.js";
 import stockReceiptRoutes from "./api/stock-receipts.routes.js";
 import returnRoutes from "./api/returns.routes.js";
+import clientErrorRoutes from "./api/client-errors.routes.js";
 import cashShiftRoutes from "./api/cash-shifts.routes.js";
 import techCardRoutes from "./api/tech-cards.routes.js";
 import catalogRoutes from "./api/catalog.routes.js";
@@ -96,6 +98,7 @@ app.use("/api/receipts", apiLimiter, receiptRoutes);
 app.use("/api/audit", apiLimiter, auditRoutes);
 app.use("/api/stock-receipts", apiLimiter, stockReceiptRoutes);
 app.use("/api/returns", apiLimiter, returnRoutes);
+app.use("/api/client-errors", clientErrorRoutes);
 app.use("/api/cash-shifts", apiLimiter, cashShiftRoutes);
 app.use("/api/tech-cards", apiLimiter, techCardRoutes);
 app.use("/api/catalog", apiLimiter, catalogRoutes);
@@ -136,12 +139,21 @@ async function main() {
     httpServer.listen(env.PORT, "::", () => {
       logger.info(`Server running on port ${env.PORT}`);
       logger.info(`Environment: ${env.NODE_ENV}`);
+      // Сообщение о запуске: после выкатки — «новая версия на месте», после
+      // падения — «сервер перезапустился». Заодно проверка, что уведомления доходят.
+      if (env.NODE_ENV === "production") {
+        const version = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7);
+        alerts.notify(`🟢 <b>Qwik · сервер запущен</b>${version ? ` · версия ${version}` : ""}`);
+      }
     });
 
     // The barcode catalogue loads in the background: the API is up at once and
     // lookups simply find more as the import proceeds. Tests seed their own rows.
     if (env.NODE_ENV !== "test") {
-      importSnapshot().catch((error) => logger.error("Barcode catalogue import failed", { message: error instanceof Error ? error.message : String(error) }));
+      importSnapshot().catch((error) => {
+        logger.error("Barcode catalogue import failed", { message: error instanceof Error ? error.message : String(error) });
+        alerts.report(error, { where: "загрузка базы штрихкодов при запуске" });
+      });
       catalogService
         .probeSources()
         .then((reachable) => (reachable.openFoodFacts && reachable.nationalCatalogue ? logger.info : logger.warn)("Barcode sources reachable", reachable))
@@ -150,11 +162,27 @@ async function main() {
     }
   } catch (error) {
     logger.error("Failed to start server", error);
+    alerts.report(error, { where: "запуск сервера" });
+    await alerts.flush();
     process.exit(1);
   }
 }
 
 main();
+
+// Ошибка, которую никто не поймал, — тоже владельцу. Необработанный отказ
+// промиса процесс не роняет (как и раньше), неперехваченное исключение — роняет:
+// состояние после него ненадёжно, Railway поднимет сервер заново.
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection", { message: reason instanceof Error ? reason.message : String(reason) });
+  alerts.report(reason, { where: "необработанный отказ промиса" });
+});
+
+process.on("uncaughtException", (error) => {
+  logger.error("Uncaught exception", { message: error.message, stack: error.stack });
+  alerts.report(error, { where: "неперехваченное исключение — сервер перезапускается" });
+  void alerts.flush().finally(() => process.exit(1));
+});
 
 // Graceful shutdown
 process.on("SIGTERM", async () => {

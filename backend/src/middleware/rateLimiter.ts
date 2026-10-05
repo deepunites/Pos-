@@ -82,3 +82,14 @@ export const staffLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Ошибки из браузера (касса, админка): 30 за 15 минут на сотрудника или адрес —
+// сломанная страница в цикле не завалит Telegram.
+export const clientErrorLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  keyGenerator: userOrIpKey,
+  message: { success: false, error: "Слишком много сообщений об ошибках" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
