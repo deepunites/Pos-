@@ -444,11 +444,16 @@ export default function ProductEdit() {
 
         <div className="card space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Склад</h2>
-          <label className="flex items-center gap-3">
-            <input type="checkbox" checked={form.trackInventory} onChange={(e) => setForm({ ...form, trackInventory: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-primary-600" />
-            <span className="text-sm font-medium text-gray-700">Учитывать остатки</span>
-          </label>
-          {form.trackInventory && (
+          {/* Магазин ведёт остаток у каждого товара: продажа уменьшает, в минус тоже. */}
+          {retail ? (
+            <p className="text-sm text-gray-500">Остаток уменьшается с каждым пробитым чеком. Если товар продали раньше, чем внесли приход, остаток уйдёт в минус.</p>
+          ) : (
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={form.trackInventory} onChange={(e) => setForm({ ...form, trackInventory: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-primary-600" />
+              <span className="text-sm font-medium text-gray-700">Учитывать остатки</span>
+            </label>
+          )}
+          {(form.trackInventory || retail) && (
             <div className="grid grid-cols-2 gap-4">
               <div><label htmlFor="productedit-f13" className="label">Текущий остаток{form.saleUnit === "кг" ? ", кг" : form.saleUnit === "г" ? ", г" : ""}</label><input id="productedit-f13" type="number" value={form.currentStock} onChange={(e) => setForm({ ...form, currentStock: parseFloat(e.target.value) || 0 })} className="input" step="any" /></div>
               <div><label htmlFor="productedit-f14" className="label">Минимальный остаток{form.saleUnit === "кг" ? ", кг" : form.saleUnit === "г" ? ", г" : ""}</label><input id="productedit-f14" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: parseFloat(e.target.value) || 0 })} className="input" step="any" /></div>

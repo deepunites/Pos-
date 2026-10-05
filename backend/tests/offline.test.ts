@@ -181,14 +181,18 @@ describe("Offline sales from the shop register", () => {
     expect((await prisma.product.findUniqueOrThrow({ where: { id: salt.id } })).currentStock).toBe(50);
   });
 
-  it("leaves online sales exactly as strict as before", async () => {
+  it("keeps online prices strict, and does not mark an online sale below zero as offline", async () => {
     const soda = await product({ name: "Газировка", price: 6000, currentStock: 0 });
 
+    // Магазин продаёт в минус и со связью (2026-10-05), но цену берёт с сервера,
+    // а пометку «не хватило» ставит только чекам без связи.
     const noStock = await api("/orders/checkout", cashierToken, {
       method: "POST",
       body: JSON.stringify({ type: "takeaway", cashShiftId: shiftId, items: [{ productId: soda.id, quantity: 1, unitPrice: 1 }], expectedTotal: 6000, payment: { method: "cash" } }),
     });
-    expect(noStock.status).toBe(400); // без офлайн-пометки — в минус не продаём
+    expect(noStock.status).toBe(201);
+    expect(((await noStock.json()) as any).data).toMatchObject({ total: 6000, offlineShortfall: false });
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: soda.id } })).currentStock).toBe(-1);
 
     await prisma.product.update({ where: { id: soda.id }, data: { currentStock: 5 } });
     const cheap = await api("/orders/checkout", cashierToken, {

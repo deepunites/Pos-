@@ -125,8 +125,7 @@ export default function TileCatalog({ filter, onFilter, items, parts, onPick }: 
                 return (
                   <button
                     key={product.id}
-                    className={`sh-t${added ? " in" : ""}${state === "out" ? " off" : ""}`}
-                    disabled={state === "out"}
+                    className={`sh-t${added ? " in" : ""}`}
                     onClick={() => onPick(product)}
                   >
                     {weighed && (
@@ -138,7 +137,8 @@ export default function TileCatalog({ filter, onFilter, items, parts, onPick }: 
                     {added ? (
                       <span className="sh-bd r tab">{added}</span>
                     ) : state === "out" ? (
-                      <span className="sh-bd r out">нет в наличии</span>
+                      // Ноль по учёту — не «нет на полке»: продаётся, склад уйдёт в минус до прихода.
+                      <span className="sh-bd r out tab">ост. {stock}</span>
                     ) : state === "low" ? (
                       <span className="sh-bd r low tab">мало · {stock}</span>
                     ) : stock ? (

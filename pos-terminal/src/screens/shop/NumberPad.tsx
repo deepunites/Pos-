@@ -15,8 +15,9 @@ interface NumberPadProps {
   /** Line total for the typed value, shown under the number. */
   total: (value: number) => number;
   /** Most that may be sold (stock left), in the typed unit; Infinity when unlimited. */
-  max: number;
-  maxHint: string;
+  /** Больше нельзя (не задано — без предела: магазин продаёт в минус). */
+  max?: number;
+  maxHint?: string;
   confirmLabel: string;
   money: (n: number) => string;
   onConfirm: (value: number) => void;
@@ -32,7 +33,7 @@ const asText = (n: number | undefined, mode: "weight" | "count"): string =>
  * line is computed as it is typed, so the cashier can read it out to the customer.
  */
 export default function NumberPad(props: NumberPadProps) {
-  const { title, emoji, imageUrl, subtitle, mode, initial, unitLabel, quick, total, max, maxHint, confirmLabel, money, onConfirm, onClose } = props;
+  const { title, emoji, imageUrl, subtitle, mode, initial, unitLabel, quick, total, max = Number.POSITIVE_INFINITY, maxHint = "", confirmLabel, money, onConfirm, onClose } = props;
   const [text, setText] = useState(asText(initial, mode));
   // Editing an existing line opens with its value shown; the first key typed
   // replaces it (like a selected field) instead of tacking on to it — "1" then

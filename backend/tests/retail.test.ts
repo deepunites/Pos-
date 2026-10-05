@@ -103,12 +103,23 @@ describe("Retail: weighted goods, lookup, search, business type", () => {
     expect(body.error).toContain("не указан вес");
   });
 
-  it("names the unit when a weighed product is short on stock", async () => {
+  it("sells a weighed product below zero in a shop, and names the unit when a café runs short", async () => {
     const lemons = await product({ name: "Лимоны", price: 28000, currentStock: 0.5, saleUnit: "кг" });
-    const res = await checkout(cashierToken, [{ productId: lemons.id, quantity: 1, grams: 1000 }], 28000);
-    const body = (await res.json()) as any;
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(body.error).toContain("осталось 0.5 кг");
+    // Магазин: товар на полке, приход не внесён — продажа проходит, остаток уходит в минус.
+    expect((await checkout(cashierToken, [{ productId: lemons.id, quantity: 1, grams: 1000 }], 28000)).status).toBe(201);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: lemons.id } })).currentStock).toBeCloseTo(-0.5, 5);
+
+    // Кафе: как раньше — не хватает, значит отказ, с единицей измерения.
+    await prisma.tenant.update({ where: { id: testTenantId }, data: { businessType: "cafe" } });
+    try {
+      await prisma.product.update({ where: { id: lemons.id }, data: { currentStock: 0.5, trackInventory: true } });
+      const res = await checkout(cashierToken, [{ productId: lemons.id, quantity: 1, grams: 1000 }], 28000);
+      const body = (await res.json()) as any;
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(body.error).toContain("осталось 0.5 кг");
+    } finally {
+      await prisma.tenant.update({ where: { id: testTenantId }, data: { businessType: "retail" } });
+    }
   });
 
   it("returns kilograms to stock when an order for a weighed product is cancelled", async () => {

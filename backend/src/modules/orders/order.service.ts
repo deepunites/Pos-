@@ -132,7 +132,10 @@ export class OrderService {
   // already taken, so each line keeps the price the customer paid, a product
   // taken off sale since is still accepted, and a short balance is not refused
   // here — reserveStock lets it go below zero and the order is marked.
-  private async priceItems(tx: Tx, tenantId: string, items: CreateOrderInput["items"], offline = false) {
+  // Магазин (retail) склад ведёт у каждого товара и продаёт в минус: остаток
+  // уменьшается после каждого чека, но ноль по учёту продажу не останавливает —
+  // товар на полке, просто приход ещё не внесли (решение владельца, 2026-10-05).
+  private async priceItems(tx: Tx, tenantId: string, items: CreateOrderInput["items"], offline = false, retail = false) {
     let subtotal = 0;
     let priceChanged = false;
     const orderItems: Prisma.OrderItemUncheckedCreateWithoutOrderInput[] = [];
@@ -184,12 +187,12 @@ export class OrderService {
       itemTotal = round2(itemTotal);
       subtotal += itemTotal;
 
-      if (product.trackInventory) {
+      if (product.trackInventory || retail) {
         const units = stockUnitsFor({ quantity: item.quantity, weightGrams }, product.saleUnit);
         const prev = reserved.get(product.id);
         reserved.set(product.id, { productId: product.id, name: product.name, units: (prev?.units || 0) + units });
         // Early, friendlier check; the authoritative one happens in reserveStock.
-        if (!offline && !hasEnough(product.currentStock, reserved.get(product.id)!.units)) {
+        if (!offline && !retail && !hasEnough(product.currentStock, reserved.get(product.id)!.units)) {
           throw new Error(`Недостаточно товара «${product.name}» на складе: осталось ${roundStock(product.currentStock)}${stockUnitLabel(product.saleUnit)}`);
         }
       }
@@ -233,16 +236,17 @@ export class OrderService {
       sellerId = cashier.id;
     }
     const at = offline ? offline.soldAt : new Date();
+    const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } });
+    const retail = tenant?.businessType === "retail";
 
-    const { orderItems, subtotal, reservations, priceChanged } = await this.priceItems(tx, tenantId, data.items, Boolean(offline));
+    const { orderItems, subtotal, reservations, priceChanged } = await this.priceItems(tx, tenantId, data.items, Boolean(offline), retail);
     const discountAmount = Math.min(data.discountAmount || 0, subtotal);
     const total = round2(subtotal - discountAmount);
 
     const orderNumber = await nextOrderNumber(tx, tenantId);
     // Заказ кафе сразу встаёт на экран кухни — и оплаченный тоже: статус оплаты
     // и кухни разные (schema.prisma, Order.kitchenStatus). Магазину кухня не нужна.
-    const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } });
-    const toKitchen = tenant?.businessType !== "retail";
+    const toKitchen = !retail;
 
     // Продажа на кассе (status "completed") в той же транзакции списывает
     // ингредиенты по техкарте. Товары и ингредиенты блокируются здесь разом,
@@ -286,8 +290,13 @@ export class OrderService {
       },
     });
 
-    const shortfall = await reserveStock(tx, { tenantId, userId: sellerId, orderId: created.id, reservations, allowNegative: Boolean(offline) });
-    if (shortfall) {
+    const shortfall = await reserveStock(tx, { tenantId, userId: sellerId, orderId: created.id, reservations, allowNegative: Boolean(offline) || retail });
+    // Товар магазина, у которого учёт был выключен (заведён до 2026-10-05), с первой продажи считается.
+    if (retail && reservations.length > 0) {
+      await tx.product.updateMany({ where: { tenantId, id: { in: reservations.map((r) => r.productId) }, trackInventory: false }, data: { trackInventory: true } });
+    }
+    // Пометка «не хватило» — для чеков без связи: у магазина минус — обычное дело.
+    if (shortfall && offline) {
       return tx.order.update({ where: { id: created.id }, data: { offlineShortfall: true } });
     }
     return created;

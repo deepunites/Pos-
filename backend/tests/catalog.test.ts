@@ -258,7 +258,8 @@ describe("Barcode catalogue", () => {
     const body = (await res.json()) as any;
 
     expect(res.status).toBe(201);
-    expect(body.data).toMatchObject({ name: "Acme Choco & Nuts 250 г", barcode: LIVE_HIT, price: 18000, trackInventory: false, saleUnit: null });
+    // Магазин ведёт остаток у каждого товара — и у заведённого без количества.
+    expect(body.data).toMatchObject({ name: "Acme Choco & Nuts 250 г", barcode: LIVE_HIT, price: 18000, trackInventory: true, currentStock: 0, saleUnit: null });
     expect(body.data.category).toMatchObject({ name: "Сладости", markupPercent: 20 }); // created, with the shop's default markup
     expect(JSON.parse(body.data.metadata)).toEqual({ ikpu: "01905012001444068" }); // the code the invoice and the receipt need
 
