@@ -30,10 +30,11 @@ import { useMoney } from "../hooks/useMoney";
 import { apiErrorMessage } from "../utils/apiError";
 import type { Category, Product, CashShift, Table } from "../types";
 import StockReceiptScreen from "./StockReceiptScreen";
+import { usePermissions, type Permissions } from "../services/permissions";
 import { UZ_PREFIX, formatLocal, fullPhone, localDigits } from "../utils/phone";
 
 interface MenuScreenProps {
-  user: { firstName: string; lastName: string; email: string; role: string };
+  user: { firstName: string; lastName: string; email: string; role: string; permissions?: Partial<Permissions> };
   shift: CashShift;
   onLogout: () => void;
   onCheckout: () => void;
@@ -73,6 +74,7 @@ const UNCATEGORIZED = "__none__";
 
 export default function MenuScreen({ user, onLogout, onCheckout, onCloseShift }: MenuScreenProps) {
   const { money, parts } = useMoney();
+  const rights = usePermissions(user.permissions);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [showTablePicker, setShowTablePicker] = useState(false);
@@ -334,10 +336,12 @@ export default function MenuScreen({ user, onLogout, onCheckout, onCloseShift }:
 
         <div className="flex-1" />
 
-        <button onClick={() => setShowStockReceipt(true)} className={BAR_CHIP} title="Оформить приход товара">
-          <PackagePlus className="h-4 w-4 text-bar-muted" />
-          Приход
-        </button>
+        {rights.canReceiveStock && (
+          <button onClick={() => setShowStockReceipt(true)} className={BAR_CHIP} title="Оформить приход товара">
+            <PackagePlus className="h-4 w-4 text-bar-muted" />
+            Приход
+          </button>
+        )}
         <span className="h-6 w-px bg-white/15" />
         <button onClick={onCloseShift} className={BAR_CHIP} title="Закрыть смену">
           <span className="h-2 w-2 rounded-full bg-success-500" />

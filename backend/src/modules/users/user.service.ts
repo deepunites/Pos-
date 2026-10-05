@@ -35,6 +35,9 @@ export class UserService {
           isActive: true,
           lastLoginAt: true,
           createdAt: true,
+          canSellOnDebt: true,
+          canReceiveStock: true,
+          canSeeExpectedCash: true,
           pin: true, // не возвращается наружу — превращается в hasPin ниже
         },
         orderBy: { createdAt: "desc" },
@@ -65,6 +68,9 @@ export class UserService {
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
+        canSellOnDebt: true,
+        canReceiveStock: true,
+        canSeeExpectedCash: true,
         pin: true,
       },
     });
@@ -132,6 +138,9 @@ export class UserService {
         phone: true,
         role: true,
         isActive: true,
+        canSellOnDebt: true,
+        canReceiveStock: true,
+        canSeeExpectedCash: true,
       },
     });
   }

@@ -49,6 +49,10 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
     );
   }
 
+  // «Слепое» закрытие: кассир пересчитывает ящик, не зная, сколько должно
+  // быть, — ни итогов, ни подсказок суммой, ни расхождения. Их видит администратор.
+  const blind = shift.blind === true;
+
   // Ожидаемые наличные считает сервер: начальная сумма, наличные продажи и
   // погашения долгов наличными. Раньше касса считала сама и вычитала возвраты,
   // которые уже выпали из продаж, а погашений не знала вовсе.
@@ -86,6 +90,18 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {blind && (
+            <div className="rounded border border-dark-600 bg-dark-700/50 p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-dark-400">Начальная наличность</span>
+                <span className="font-medium text-dark-50">{money(shift.openingCash)}</span>
+              </div>
+              <p className="text-sm text-dark-300">Пересчитайте наличные в кассе и введите сумму. Сколько должно быть, видит администратор.</p>
+            </div>
+          )}
+
+          {!blind && (
+          <>
           {/* Summary cards */}
           <div className="grid grid-cols-2 gap-3">
             <SummaryCard icon={<TrendingUp className="h-4 w-4 text-primary-400" />} label="Общие продажи" value={money(shift.totalSales)} />
@@ -113,6 +129,8 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
               <span className="font-bold text-primary-400">{money(expectedCash)}</span>
             </div>
           </div>
+          </>
+          )}
 
           {/* Closing cash input */}
           <div>
@@ -134,6 +152,7 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
           </div>
 
           {/* Quick amounts */}
+          {!blind && (
           <div className="grid grid-cols-3 gap-2">
             {quickAmounts.map((amount) => (
               <button
@@ -145,9 +164,10 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
               </button>
             ))}
           </div>
+          )}
 
           {/* Difference indicator */}
-          {closingCash && (
+          {closingCash && !blind && (
             <div
               className={`rounded border p-4 text-center ${
                 difference === 0

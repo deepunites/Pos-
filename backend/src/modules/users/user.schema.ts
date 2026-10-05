@@ -17,6 +17,10 @@ export const createUserSchema = z.object({
     .or(z.literal("")),
   role: z.enum(ROLES),
   isActive: z.boolean().optional(),
+  // Права кассира — см. users/permissions.ts.
+  canSellOnDebt: z.boolean().optional(),
+  canReceiveStock: z.boolean().optional(),
+  canSeeExpectedCash: z.boolean().optional(),
 });
 
 export const updateUserSchema = createUserSchema.omit({ password: true }).partial().extend({

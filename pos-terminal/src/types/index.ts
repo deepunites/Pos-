@@ -177,6 +177,8 @@ export interface CashShift {
   totalRefunds: number;
   expectedCash?: number;
   difference?: number;
+  /** «Слепая» смена: у кассира нет права видеть сумму — итогов и ожидаемой наличности сервер не прислал. */
+  blind?: boolean;
   notes?: string;
   openedAt: string;
   closedAt?: string;

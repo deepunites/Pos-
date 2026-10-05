@@ -69,6 +69,15 @@ model User {
   role         String    @default("cashier")
   avatarUrl    String?   @map("avatar_url")
   isActive     Boolean   @default(true) @map("is_active")
+  // Права кассира (у администратора и менеджера разрешено всё). По умолчанию
+  // всё можно — как было до них; администратор снимает галочки в карточке
+  // сотрудника. Проверяются на сервере при каждом действии, не из токена:
+  // снятая галочка действует сразу, без перевхода.
+  canSellOnDebt      Boolean @default(true) @map("can_sell_on_debt")
+  /// Приход товара на кассе — и новые товары в нём.
+  canReceiveStock    Boolean @default(true) @map("can_receive_stock")
+  /// false — «слепое» закрытие смены: сколько наличных должно быть, кассир не видит.
+  canSeeExpectedCash Boolean @default(true) @map("can_see_expected_cash")
   // Счётчик для отзыва refresh-токенов: он пишется в токен обновления и
   // сверяется при каждом обновлении. Смена пароля увеличивает счётчик, и все
   // выданные ранее refresh-токены перестают работать. Без этого украденный

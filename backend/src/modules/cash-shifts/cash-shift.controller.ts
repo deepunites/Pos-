@@ -3,6 +3,13 @@ import { Request, Response } from "express";
 import { cashShiftService } from "./cash-shift.service.js";
 import { sendSuccess, sendPaginated } from "../../utils/response.js";
 import { handleError } from "../../utils/errors.js";
+import { blindShift, permissionsOf } from "../users/permissions.js";
+
+// «Слепое» закрытие: кассиру без права видеть сумму смены итоги и ожидаемая
+// наличность не отдаются вовсе — спрятать их только на экране было бы мало.
+async function forViewer<T extends object | null>(req: Request, shift: T): Promise<T> {
+  return (await permissionsOf(req.user!)).canSeeExpectedCash ? shift : blindShift(shift);
+}
 
 export class CashShiftController {
   async openShift(req: Request, res: Response) {
@@ -29,7 +36,7 @@ export class CashShiftController {
         req.body.closingCash,
         req.body.notes
       );
-      sendSuccess(res, shift, "Смена закрыта");
+      sendSuccess(res, await forViewer(req, shift), "Смена закрыта");
     } catch (error) {
       handleError(res, error);
     }
@@ -41,7 +48,7 @@ export class CashShiftController {
         req.user!.tenantId,
         req.user!.id
       );
-      sendSuccess(res, shift);
+      sendSuccess(res, await forViewer(req, shift));
     } catch (error) {
       handleError(res, error);
     }
@@ -70,7 +77,7 @@ export class CashShiftController {
         req.user!.tenantId,
         req.params.id as string
       );
-      sendSuccess(res, shift);
+      sendSuccess(res, await forViewer(req, shift));
     } catch (error) {
       handleError(res, error, 404);
     }

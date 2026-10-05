@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { permissionsFromRow } from "../users/permissions.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../../config/database.js";
@@ -68,6 +69,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         avatarUrl: user.avatarUrl,
+        permissions: permissionsFromRow(user),
       },
       ...tokens,
     };
@@ -146,6 +148,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         avatarUrl: user.avatarUrl,
+        permissions: permissionsFromRow(user),
       },
       ...tokens,
     };

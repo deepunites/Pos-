@@ -28,13 +28,16 @@ import SaleDone from "./SaleDone";
 import ScanBar from "./ScanBar";
 import ShopPayment, { type PayMode, type SaleResult } from "./ShopPayment";
 import DebtsModal from "./DebtsModal";
+import { usePermissions, type Permissions } from "../../services/permissions";
+
+const DEBT_CLOSED = "Продажа в долг вам закрыта — обратитесь к администратору";
 import SidePanel from "./SidePanel";
 import TileCatalog, { type TileFilter } from "./TileCatalog";
 import { CustomerModal, ParkedModal } from "./Modals";
 import { emojiFor, formatQty, productTitle, shelfPrice, stockLeft, weightUnit } from "./shopProduct";
 
 interface ShopScreenProps {
-  user: { firstName: string; lastName: string; email: string; role: string };
+  user: { firstName: string; lastName: string; email: string; role: string; permissions?: Partial<Permissions> };
   shift: CashShift;
   onLogout: () => void;
   onCloseShift: () => void;
@@ -107,6 +110,9 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
 
   const modalOpen = Boolean(weightFor || qtyFor || payMethod || sale || showParked || showCustomer || showReceiptIn || showDebts || newProduct);
   const canAddProducts = user.role === "admin" || user.role === "manager";
+  // Галочки из карточки сотрудника: без них нет «В долг» (и F11) и «Прихода».
+  const rights = usePermissions(user.permissions);
+  const canDebt = rights.canSellOnDebt;
   const total = getTotal();
 
   // Retail orders are takeaway orders with no table — and a table left over
@@ -311,9 +317,9 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   // Обработчики клавиатуры читают последние значения отсюда. Пишутся они после
   // фиксации рендера (useLayoutEffect — раньше любых событий и эффектов), а не во
   // время рендера: рендер, который React отбросит, не должен их перезаписать.
-  const live = useRef({ query, armed, suggestions, suggestFresh, suggestIndex, items, modalOpen, selectedId, payMethod });
+  const live = useRef({ query, armed, suggestions, suggestFresh, suggestIndex, items, modalOpen, selectedId, payMethod, canDebt });
   useLayoutEffect(() => {
-    live.current = { query, armed, suggestions, suggestFresh, suggestIndex, items, modalOpen, selectedId, payMethod };
+    live.current = { query, armed, suggestions, suggestFresh, suggestIndex, items, modalOpen, selectedId, payMethod, canDebt };
   });
 
   const submit = useCallback(async () => {
@@ -491,13 +497,17 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         fail("Чек пуст");
         return;
       }
+      if (method === "debt" && !canDebt) {
+        fail(DEBT_CLOSED);
+        return;
+      }
       if (method !== "cash" && offlineNow()) {
         fail(method === "debt" ? "Без связи в долг не записать — только наличные" : "Без связи — только наличные: картой оплатить нельзя");
         return;
       }
       setPayMethod(method);
     },
-    [fail]
+    [fail, canDebt]
   );
 
   const onPaid = useCallback((result: SaleResult) => {
@@ -529,7 +539,8 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       const byKey: Record<string, PayMode> = { F8: "cash", F9: "card", F10: "mixed", F11: "debt" };
       if (s.payMethod && byKey[e.key]) {
         e.preventDefault();
-        setPayMethod(byKey[e.key]);
+        if (byKey[e.key] === "debt" && !s.canDebt) fail(DEBT_CLOSED);
+        else setPayMethod(byKey[e.key]);
         return;
       }
       if (s.modalOpen) return;
@@ -592,7 +603,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusField, openPay, park, removeLine, submit]);
+  }, [fail, focusField, openPay, park, removeLine, submit]);
 
   // The field owns the keyboard whenever no window is open — and lets go of it
   // the moment one opens, or the digits typed into the window would also land
@@ -641,10 +652,12 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
             <span className="sh-badge">{parked.length}</span>
           </button>
         )}
-        <button className="sh-chip" onClick={() => setShowReceiptIn(true)} title="Оформить приход товара">
-          <PackagePlus className="i" />
-          Приход
-        </button>
+        {rights.canReceiveStock && (
+          <button className="sh-chip" onClick={() => setShowReceiptIn(true)} title="Оформить приход товара">
+            <PackagePlus className="i" />
+            Приход
+          </button>
+        )}
         <button className="sh-chip" onClick={() => setShowDebts(true)} title="Клиент гасит долг">
           <HandCoins className="i" />
           Долги
@@ -769,6 +782,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
             onCustomer={() => setShowCustomer(true)}
             onPay={openPay}
             canPay={items.length > 0}
+            canDebt={canDebt}
             offline={offline}
           />
         )}

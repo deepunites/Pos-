@@ -21,6 +21,7 @@ import { isNoConnection } from "./utils/apiError";
 import { disconnectSocket } from "./services/socket";
 import api, { clearSession } from "./services/api";
 import type { Order, CashShift } from "./types";
+import type { Permissions } from "./services/permissions";
 
 interface UserData {
   id: string;
@@ -28,6 +29,7 @@ interface UserData {
   lastName: string;
   email: string;
   role: string;
+  permissions?: Partial<Permissions>;
 }
 
 interface WorkspaceProps {
