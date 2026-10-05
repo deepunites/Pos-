@@ -244,7 +244,7 @@ export class CatalogService {
 
   /** Creates the shop's product from a scan: the catalogue supplied the name, the shop supplies the price. */
   async add(tenantId: string, input: CatalogAddInput) {
-    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { defaultMarkupPercent: true } });
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { defaultMarkupPercent: true, businessType: true } });
     // The IKPU the invoice and the receipt will need travels with the product — read here, not taken from the client.
     const known = await prisma.catalogProduct.findFirst({ where: { barcode: { in: barcodeVariants(input.barcode) } }, select: { ikpu: true } });
     const ikpu = input.ikpu ?? known?.ikpu ?? null;
@@ -283,7 +283,8 @@ export class CatalogService {
           costPrice: input.costPrice ?? 0,
           unit: input.weighed ? "kg" : "piece",
           saleUnit: input.weighed ? "кг" : null,
-          trackInventory: input.stock !== undefined,
+          // Магазин ведёт остаток у каждого товара; кафе — только если его указали.
+          trackInventory: tenant?.businessType === "retail" || input.stock !== undefined,
           currentStock: input.stock ?? 0,
           metadata: ikpu ? JSON.stringify({ ikpu }) : undefined,
         },

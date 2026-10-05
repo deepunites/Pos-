@@ -17,7 +17,7 @@ import { useDebounced } from "../../hooks/useDebounced";
 import type { CartItem, CashShift, Product } from "../../types";
 import { fetchNational } from "../../utils/national";
 import { beep, setSoundEnabled, soundEnabled } from "../../utils/sound";
-import { gramsPerUnit, kgToGrams, parseDecimal, pricePerKg, stockInKg, weightLineTotal } from "../../utils/weight";
+import { kgToGrams, parseDecimal, pricePerKg, stockInKg, weightLineTotal } from "../../utils/weight";
 import StockReceiptScreen from "../StockReceiptScreen";
 import "./shop.css";
 import CatalogAdd, { type CatalogHit } from "./CatalogAdd";
@@ -34,7 +34,7 @@ const DEBT_CLOSED = "Продажа в долг вам закрыта — обр
 import SidePanel from "./SidePanel";
 import TileCatalog, { type TileFilter } from "./TileCatalog";
 import { CustomerModal, ParkedModal } from "./Modals";
-import { emojiFor, formatQty, productTitle, shelfPrice, stockLeft, weightUnit } from "./shopProduct";
+import { emojiFor, formatQty, productTitle, shelfPrice, weightUnit } from "./shopProduct";
 
 interface ShopScreenProps {
   user: { firstName: string; lastName: string; email: string; role: string; permissions?: Partial<Permissions> };
@@ -160,10 +160,8 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
     toast.error(message, { id: "shop-error", duration });
   }, []);
 
-  // Без связи остатка по копии каталога не хватает — продаём в минус, но кассир это видит.
-  const warnShort = useCallback((name: string) => {
-    toast(`«${name}»: по последним данным на складе нет — продаём в минус, в отчёте будет пометка`, { id: "shop-short", icon: "⚠️", duration: 3500 });
-  }, []);
+  // Остаток по учёту продажу не останавливает — ни со связью, ни без: товар на
+  // полке, значит его продают, а склад уходит в минус до прихода (2026-10-05).
 
   // Копия каталога для работы без связи: при входе, раз в 10 минут и когда связь вернулась.
   const offline = useConnection((s) => s.problem !== null);
@@ -182,18 +180,10 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   }, []);
 
   const addWeighed = useCallback(
-    (product: Product, grams: number, mode: "add" | "set", lineId?: string) => {
+    (product: Product, grams: number, mode: "add" | "set") => {
       const unit = weightUnit(product);
       if (!unit) return;
       const store = useCartStore.getState();
-      const left = stockLeft(product, store.items, mode === "set" ? lineId : undefined);
-      if (product.trackInventory && grams / gramsPerUnit(unit) > left + 1e-9) {
-        if (!offlineNow()) {
-          fail(`«${product.name}»: осталось ${formatQty(stockInKg(Math.max(left, 0), unit))} кг`);
-          return;
-        }
-        warnShort(product.name);
-      }
       const id = store.addWeight(
         { productId: product.id, name: productTitle(product), rate: Number(product.price), weightUnit: unit, barcode: product.barcode ?? null, emoji: emojiFor(product) },
         grams,
@@ -201,18 +191,13 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       );
       touched(id);
     },
-    [fail, touched, warnShort]
+    [touched]
   );
 
   const addProduct = useCallback(
     (product: Product, multiplier: number | null = null) => {
       products.current.set(product.id, product);
       const store = useCartStore.getState();
-      const left = stockLeft(product, store.items);
-      if (product.trackInventory && left <= 0 && !offlineNow()) {
-        fail(`«${product.name}» — нет в наличии`);
-        return;
-      }
 
       if (weightUnit(product)) {
         // Weighed goods: a typed multiplier is the weight in kilograms; otherwise ask for the weight.
@@ -229,20 +214,13 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         }
         qty = multiplier;
       }
-      if (qty > left) {
-        if (!offlineNow()) {
-          fail(`«${product.name}»: осталось ${formatQty(left)}`);
-          return;
-        }
-        warnShort(product.name);
-      }
       const id = store.addPieces(
         { productId: product.id, name: productTitle(product), price: Number(product.price), barcode: product.barcode ?? null, emoji: emojiFor(product) },
         qty
       );
       touched(id);
     },
-    [addWeighed, fail, touched, warnShort]
+    [addWeighed, fail, touched]
   );
 
   // A tile / quick key uses the typed multiplier too, then drops it.
@@ -428,18 +406,10 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
         removeLine(id);
         return;
       }
-      const product = products.current.get(line.productId);
-      if (delta === 1 && product && product.trackInventory && stockLeft(product, useCartStore.getState().items) < 1) {
-        if (!offlineNow()) {
-          fail(`«${line.name}»: больше нет на складе`);
-          return;
-        }
-        warnShort(line.name);
-      }
       updateQuantity(id, line.quantity + delta);
       setSelectedId(id);
     },
-    [fail, removeLine, updateQuantity, warnShort]
+    [removeLine, updateQuantity]
   );
 
   const fetchProduct = useCallback(async (id: string): Promise<Product | null> => {
@@ -799,18 +769,13 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
           unitLabel="кг"
           quick={[0.25, 0.5, 1, 2, 5]}
           total={(kg) => weightLineTotal(Number(weightFor.product.price), kgToGrams(kg), weightUnit(weightFor.product) ?? "кг")}
-          max={(() => {
-            const unit = weightUnit(weightFor.product) ?? "кг";
-            return stockInKg(stockLeft(weightFor.product, items, weightFor.lineId), unit);
-          })()}
-          maxHint={`Осталось ${formatQty(Math.max(0, stockInKg(stockLeft(weightFor.product, items, weightFor.lineId), weightUnit(weightFor.product) ?? "кг")))} кг`}
           confirmLabel={weightFor.lineId ? "Изменить вес" : "Добавить в чек"}
           money={money}
           onClose={() => setWeightFor(null)}
           onConfirm={(kg) => {
             const target = weightFor;
             setWeightFor(null);
-            addWeighed(target.product, kgToGrams(kg), target.lineId ? "set" : "add", target.lineId);
+            addWeighed(target.product, kgToGrams(kg), target.lineId ? "set" : "add");
           }}
         />
       )}
@@ -826,8 +791,6 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
           unitLabel="шт"
           quick={[1, 2, 3, 5, 10]}
           total={(count) => Math.round(qtyFor.line.price * count * 100) / 100}
-          max={stockLeft(qtyFor.product, items, qtyFor.line.id)}
-          maxHint={`Осталось ${formatQty(Math.max(0, stockLeft(qtyFor.product, items, qtyFor.line.id)))} шт`}
           confirmLabel="Изменить"
           money={money}
           onClose={() => setQtyFor(null)}

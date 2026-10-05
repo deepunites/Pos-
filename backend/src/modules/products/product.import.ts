@@ -2,6 +2,7 @@ import { z } from "zod";
 import prisma from "../../config/database.js";
 import { inTransaction } from "../../utils/transaction.js";
 import { lockStockRows, roundStock, round2, type Tx } from "../inventory/stock.helpers.js";
+import { isRetail } from "./product.service.js";
 
 // Импорт товаров из Excel/CSV — своей выгрузки, шаблона или файла другой
 // программы (1С и др.). Файл разбирает админка и присылает строки уже по
@@ -247,13 +248,14 @@ export async function importProducts(tenantId: string, userId: string, rows: Imp
   }
 
   const work = plan.filter((p) => p.kind === "create" || p.kind === "update");
+  const retail = await isRetail(tenantId);
   for (let i = 0; i < work.length; i += BATCH) {
     const batch = work.slice(i, i + BATCH);
     await inTransaction(async (tx) => {
       const stockIds = batch.filter((p) => p.product && p.changes.some((c) => c.field === "stock")).map((p) => p.product!.id);
       if (stockIds.length) await lockStockRows(tx, tenantId, stockIds);
       for (const p of batch) {
-        if (p.kind === "create") await createProduct(tx, tenantId, userId, p, categoryByName);
+        if (p.kind === "create") await createProduct(tx, tenantId, userId, p, categoryByName, retail);
         else await updateProduct(tx, tenantId, userId, p, categoryByName);
       }
     });
@@ -266,7 +268,7 @@ function categoryId(p: Planned, categoryByName: Map<string, string>): string | u
   return p.data.category ? categoryByName.get(p.data.category.toLowerCase()) : undefined;
 }
 
-async function createProduct(tx: Tx, tenantId: string, userId: string, p: Planned, categoryByName: Map<string, string>) {
+async function createProduct(tx: Tx, tenantId: string, userId: string, p: Planned, categoryByName: Map<string, string>, retail: boolean) {
   const d = p.data;
   const stock = d.stock !== undefined ? roundStock(d.stock) : undefined;
   const created = await tx.product.create({
@@ -281,7 +283,8 @@ async function createProduct(tx: Tx, tenantId: string, userId: string, p: Planne
       price: round2(d.price ?? 0),
       costPrice: round2(d.costPrice ?? 0),
       minStock: d.minStock !== undefined ? roundStock(d.minStock) : 0,
-      trackInventory: stock !== undefined,
+      // Магазин ведёт остаток у каждого товара; кафе — только если он есть в файле.
+      trackInventory: retail || stock !== undefined,
       currentStock: stock ?? 0,
     },
   });

@@ -145,6 +145,8 @@ export class ProductService {
   async create(tenantId: string, data: CreateProductInput) {
     await this.assertReferencesOwned(tenantId, data);
     const { tags, techCard, ...rest } = data;
+    // Магазин ведёт остаток у каждого товара: продажа его уменьшает, в минус тоже.
+    if (await isRetail(tenantId)) rest.trackInventory = true;
 
     let conversionFactor = data.conversionFactor;
     if (data.purchaseUnit && data.saleUnit && !conversionFactor) {
@@ -173,6 +175,7 @@ export class ProductService {
     await this.assertReferencesOwned(tenantId, data);
 
     const { tags, techCard, ...rest } = data;
+    if (rest.trackInventory === false && (await isRetail(tenantId))) rest.trackInventory = true;
 
     let conversionFactor = data.conversionFactor;
     if (data.purchaseUnit && data.saleUnit && !conversionFactor) {
@@ -306,3 +309,9 @@ export class ProductService {
 }
 
 export const productService = new ProductService();
+
+/** Магазин (retail): остаток ведётся у каждого товара, продажа уходит в минус (2026-10-05). */
+export async function isRetail(tenantId: string): Promise<boolean> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } });
+  return tenant?.businessType === "retail";
+}
