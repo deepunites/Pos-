@@ -1,4 +1,5 @@
 import prisma from "../../config/database.js";
+import { returnService } from "../returns/return.service.js";
 import {
   addDays,
   dateRange,
@@ -63,11 +64,18 @@ export class ReportService {
       }),
     ]);
 
+    // Выручка — за вычетом возвратов товара за тот же период.
+    const [todayReturns, weekReturns, monthReturns] = await Promise.all([
+      returnService.sumSince(tenantId, todayStart),
+      returnService.sumSince(tenantId, weekStart),
+      returnService.sumSince(tenantId, monthStart),
+    ]);
+
     return {
       todayOrders,
-      todayRevenue: todayRevenue._sum.amount || 0,
-      weekRevenue: weekRevenue._sum.amount || 0,
-      monthRevenue: monthRevenue._sum.amount || 0,
+      todayRevenue: (todayRevenue._sum.amount || 0) - todayReturns,
+      weekRevenue: (weekRevenue._sum.amount || 0) - weekReturns,
+      monthRevenue: (monthRevenue._sum.amount || 0) - monthReturns,
       activeOrders,
       totalProducts,
       lowStockProducts,
@@ -131,8 +139,11 @@ export class ReportService {
       .map(([hour, data]) => ({ hour, ...data }))
       .sort((a, b) => a.hour.localeCompare(b.hour));
 
+    const totalReturns = await returnService.sumSince(tenantId, start, end);
+
     return {
-      totalRevenue: revenue._sum.amount || 0,
+      totalRevenue: (revenue._sum.amount || 0) - totalReturns,
+      totalReturns,
       totalTips: revenue._sum.tipAmount || 0,
       totalTransactions: revenue._count,
       ordersByType: orders,

@@ -16,10 +16,11 @@ const roles = ["admin", "manager", "cashier", "waiter", "kitchen"];
 const roleLabels: Record<string, string> = { admin: "Администратор", manager: "Менеджер", cashier: "Кассир", waiter: "Официант", kitchen: "Кухня" };
 
 // Права кассира: по умолчанию всё можно, администратор снимает галочки.
-const ALL_RIGHTS: Rights = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true };
+const ALL_RIGHTS: Rights = { canSellOnDebt: true, canReceiveStock: true, canSeeExpectedCash: true, canRefund: true };
 const RIGHTS: { key: keyof Rights; label: string; description: string; off: string }[] = [
   { key: "canSellOnDebt", label: "Продажа в долг", description: "Кнопка «В долг» на кассе. Принимать оплату долга можно и без неё.", off: "без долга" },
   { key: "canReceiveStock", label: "Приход товара", description: "Оформлять приход на кассе и заводить в нём новые товары.", off: "без прихода" },
+  { key: "canRefund", label: "Возврат товара", description: "Оформлять возврат на кассе — по чеку и без чека — и отдавать деньги.", off: "без возврата" },
   {
     key: "canSeeExpectedCash",
     label: "Видит сумму смены",
@@ -33,6 +34,7 @@ const rightsOf = (user: User): Rights => ({
   canSellOnDebt: user.canSellOnDebt ?? true,
   canReceiveStock: user.canReceiveStock ?? true,
   canSeeExpectedCash: user.canSeeExpectedCash ?? true,
+  canRefund: user.canRefund ?? true,
 });
 
 function RightsFields({ rights, onChange }: { rights: Rights; onChange: (rights: Rights) => void }) {
@@ -77,8 +79,8 @@ export default function Users() {
     // пустое поле в форме означает «не менять», а не «удалить пароль».
     // Пустой pin для явного снятия PIN — отдельная кнопка ниже, не это поле.
     mutationFn: (data: { id: string; form: EditForm }) => {
-      const { firstName, lastName, phone, role, password, pin, canSellOnDebt, canReceiveStock, canSeeExpectedCash } = data.form;
-      const payload: Record<string, unknown> = { firstName, lastName, phone, role, canSellOnDebt, canReceiveStock, canSeeExpectedCash };
+      const { firstName, lastName, phone, role, password, pin, canSellOnDebt, canReceiveStock, canSeeExpectedCash, canRefund } = data.form;
+      const payload: Record<string, unknown> = { firstName, lastName, phone, role, canSellOnDebt, canReceiveStock, canSeeExpectedCash, canRefund };
       if (password) payload.password = password;
       if (pin) payload.pin = pin;
       return userService.update(data.id, payload);

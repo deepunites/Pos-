@@ -18,6 +18,8 @@ async function wipe() {
   await prisma.notification.deleteMany();
   await prisma.receipt.deleteMany();
   await prisma.orderItemModifier.deleteMany();
+  await prisma.saleReturnItem.deleteMany();
+  await prisma.saleReturn.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.customerDebtEntry.deleteMany();

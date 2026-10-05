@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, Banknote, CreditCard, HandCoins, Lock, NotebookPen, QrCode, TrendingUp, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, CreditCard, HandCoins, Lock, NotebookPen, QrCode, TrendingUp, Undo2, X } from "lucide-react";
 import api from "../services/api";
 import toast from "react-hot-toast";
 import type { CashShift } from "../types";
@@ -60,6 +60,8 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
   const debtSales = shift.totalDebtSales ?? 0;
   const repaidCash = shift.totalDebtRepaidCash ?? 0;
   const repaidCard = shift.totalDebtRepaidCard ?? 0;
+  const returnsCash = shift.totalReturnsCash ?? 0;
+  const returnsOther = (shift.totalReturnsCard ?? 0) + (shift.totalReturnsDebt ?? 0);
   const parsedClosing = parseFloat(closingCash) || 0;
   const difference = parsedClosing - expectedCash;
   const quickAmounts = [expectedCash, Math.round(expectedCash / 10000) * 10000, Math.ceil(expectedCash / 50000) * 50000];
@@ -114,6 +116,13 @@ export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: C
                 icon={<HandCoins className="h-4 w-4 text-success-400" />}
                 label={repaidCard > 0 ? `Погашено долгов (карта ${money(repaidCard)})` : "Погашено долгов"}
                 value={money(repaidCash + repaidCard)}
+              />
+            )}
+            {returnsCash + returnsOther > 0 && (
+              <SummaryCard
+                icon={<Undo2 className="h-4 w-4 text-danger-400" />}
+                label={returnsOther > 0 ? `Возвраты (наличными ${money(returnsCash)})` : "Возвраты наличными"}
+                value={money(returnsCash + returnsOther)}
               />
             )}
           </div>

@@ -38,6 +38,7 @@ export class UserService {
           canSellOnDebt: true,
           canReceiveStock: true,
           canSeeExpectedCash: true,
+          canRefund: true,
           pin: true, // не возвращается наружу — превращается в hasPin ниже
         },
         orderBy: { createdAt: "desc" },
@@ -71,6 +72,7 @@ export class UserService {
         canSellOnDebt: true,
         canReceiveStock: true,
         canSeeExpectedCash: true,
+          canRefund: true,
         pin: true,
       },
     });
@@ -141,6 +143,7 @@ export class UserService {
         canSellOnDebt: true,
         canReceiveStock: true,
         canSeeExpectedCash: true,
+          canRefund: true,
       },
     });
   }

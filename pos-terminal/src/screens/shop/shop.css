@@ -465,3 +465,37 @@
 .sh-done .ok.off { background: rgba(245, 158, 11, 0.14); color: #d97706; }
 .sh-done-off { margin-top: 10px; padding: 8px 12px; border-radius: 4px; background: rgba(245, 158, 11, 0.12); color: var(--ink); font-size: 13.5px; }
 .sh-alt:disabled .sh-fk { opacity: 0.4; }
+
+/* ── возврат на кассе (ReturnModal) ─────────────────────────────────────── */
+.sh-modal.sh-rt { max-width: 760px; }
+.sh-rt .sh-cu-list { max-height: 42vh; }
+.sh-rt-sale .t small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-rt-sale .d b { color: var(--ink); }
+.sh-rt-no { flex: none; min-width: 58px; font-weight: 700; font-size: 15px; color: var(--accent-hi); }
+.sh-rt-tag { display: inline-block; margin-top: 3px; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; background: var(--amber-soft); color: var(--amber-ink); }
+.sh-rt-lines { display: flex; flex-direction: column; gap: 6px; max-height: 38vh; overflow-y: auto; }
+.sh-rt-line { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); }
+.sh-rt-line.on { border-color: var(--accent-mid); background: var(--accent-soft); }
+.sh-rt-line .t { flex: 1; min-width: 0; }
+.sh-rt-line .t b { display: block; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-rt-line .t small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.sh-rt-qty { flex: none; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 4px; background: var(--card); }
+.sh-rt-qty button { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: var(--ink); }
+.sh-rt-qty button:disabled { opacity: 0.3; }
+.sh-rt-qty .i { width: 18px; height: 18px; }
+.sh-rt-qty b { min-width: 34px; text-align: center; font-size: 17px; font-weight: 600; }
+.sh-rt-kg { flex: none; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; }
+.sh-rt-kg input { width: 92px; height: 40px; padding: 0 10px; font: inherit; font-size: 17px; font-weight: 600; text-align: right; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 4px; outline: 0; }
+.sh-rt-kg input:focus { border-color: var(--accent); }
+.sh-rt-def { flex: none; display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink); cursor: pointer; }
+.sh-rt-def.off { opacity: 0.4; cursor: default; }
+.sh-rt-def input { width: 18px; height: 18px; accent-color: var(--red); }
+.sh-rt-sum { flex: none; width: 110px; text-align: right; font-size: 16px; font-weight: 600; }
+.sh-rt-sum.bad { color: var(--red); }
+.sh-rt-all { margin-top: 8px; height: 40px; width: 100%; display: flex; align-items: center; justify-content: center; border: 1px dashed var(--accent); border-radius: 4px; color: var(--accent); font-weight: 600; font-size: 15px; }
+.sh-rt-foot { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.sh-rt-total { display: flex; align-items: baseline; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 12px; }
+.sh-rt-total span { color: var(--muted); font-size: 15px; }
+.sh-rt-total b { font-size: 36px; font-weight: 600; letter-spacing: -0.01em; }
+.sh-rt-total b small { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.sh-rt-warn { color: var(--red); font-size: 13.5px; }

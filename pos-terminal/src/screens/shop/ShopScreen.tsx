@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HandCoins, Lock, LogOut, Moon, PackagePlus, PauseCircle, Sun, Volume2, VolumeX } from "lucide-react";
+import { HandCoins, Lock, LogOut, Moon, PackagePlus, PauseCircle, Sun, Undo2, Volume2, VolumeX } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import { ConnectionDot } from "../../components/ConnectionStatus";
@@ -28,6 +28,7 @@ import SaleDone from "./SaleDone";
 import ScanBar from "./ScanBar";
 import ShopPayment, { type PayMode, type SaleResult } from "./ShopPayment";
 import DebtsModal from "./DebtsModal";
+import ReturnModal from "./ReturnModal";
 import { usePermissions, type Permissions } from "../../services/permissions";
 
 const DEBT_CLOSED = "Продажа в долг вам закрыта — обратитесь к администратору";
@@ -101,6 +102,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   const [showCustomer, setShowCustomer] = useState(false);
   const [showReceiptIn, setShowReceiptIn] = useState(false);
   const [showDebts, setShowDebts] = useState(false);
+  const [showReturn, setShowReturn] = useState(false);
   // A scanned code the shop does not have yet, offered to the manager as a new product.
   const [newProduct, setNewProduct] = useState<{ code: string; hit: CatalogHit | null; multiplier: number | null } | null>(null);
 
@@ -108,7 +110,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
   const products = useRef(new Map<string, Product>()); // what the terminal has seen of each product (stock, price)
   const lookups = useRef(new Map<string, { at: number; product: Product | null }>());
 
-  const modalOpen = Boolean(weightFor || qtyFor || payMethod || sale || showParked || showCustomer || showReceiptIn || showDebts || newProduct);
+  const modalOpen = Boolean(weightFor || qtyFor || payMethod || sale || showParked || showCustomer || showReceiptIn || showDebts || showReturn || newProduct);
   const canAddProducts = user.role === "admin" || user.role === "manager";
   // Галочки из карточки сотрудника: без них нет «В долг» (и F11) и «Прихода».
   const rights = usePermissions(user.permissions);
@@ -628,6 +630,12 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
             Приход
           </button>
         )}
+        {rights.canRefund && (
+          <button className="sh-chip" onClick={() => setShowReturn(true)} title="Покупатель возвращает товар">
+            <Undo2 className="i" />
+            Возврат
+          </button>
+        )}
         <button className="sh-chip" onClick={() => setShowDebts(true)} title="Клиент гасит долг">
           <HandCoins className="i" />
           Долги
@@ -831,6 +839,7 @@ export default function ShopScreen({ user, shift, onLogout, onCloseShift }: Shop
       )}
       {showReceiptIn && <StockReceiptScreen onClose={() => setShowReceiptIn(false)} />}
       {showDebts && <DebtsModal shiftId={shift.id} onClose={() => setShowDebts(false)} />}
+      {showReturn && <ReturnModal shiftId={shift.id} onClose={() => setShowReturn(false)} />}
       {newProduct && (
         <CatalogAdd
           code={newProduct.code}

@@ -271,9 +271,10 @@ export class ProductService {
     const product = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!product) throw new NotFoundError("Товар не найден");
 
-    const [sold, received, inRecipe] = await Promise.all([
+    const [sold, received, returned, inRecipe] = await Promise.all([
       prisma.orderItem.count({ where: { productId: id } }),
       prisma.stockReceiptItem.count({ where: { productId: id } }),
+      prisma.saleReturnItem.count({ where: { productId: id } }),
       product.isIngredient
         ? Promise.all([
             prisma.techCard.count({ where: { tenantId, ingredients: { contains: id } } }),
@@ -282,7 +283,7 @@ export class ProductService {
         : Promise.resolve(0),
     ]);
 
-    if (sold || received || inRecipe) {
+    if (sold || received || returned || inRecipe) {
       await prisma.product.update({ where: { id }, data: { isActive: false } });
       return { removed: "archived" };
     }
