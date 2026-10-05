@@ -249,7 +249,7 @@ export const productService = {
   get: (id: string) => api.get<ApiResponse<Product>>(`/products/${id}`),
   create: (data: ProductInput) => api.post<ApiResponse<Product>>("/products", data),
   update: (id: string, data: ProductInput) => api.put<ApiResponse<Product>>(`/products/${id}`, data),
-  delete: (id: string) => api.delete(`/products/${id}`),
+  delete: (id: string) => api.delete<ApiResponse<{ removed: "deleted" | "archived" }>>(`/products/${id}`),
   adjustStock: (id: string, data: { quantity: number; reason: string }) =>
     api.post(`/products/${id}/stock`, data),
   getIngredients: () => api.get<ApiResponse<Ingredient[]>>("/products/ingredients"),

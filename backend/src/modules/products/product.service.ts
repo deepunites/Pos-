@@ -263,15 +263,36 @@ export class ProductService {
     );
   }
 
-  async delete(tenantId: string, id: string) {
+  // Товар без продаж и приходов удаляется насовсем — заведённый по ошибке или
+  // тестовый не должен жить в базе и в выгрузке. Товар с историей только
+  // снимается с продажи: на его строки ссылаются чеки, приходы и отчёты.
+  // Ингредиент, который стоит в техкарте, тоже только снимается.
+  async delete(tenantId: string, id: string): Promise<{ removed: "deleted" | "archived" }> {
     const product = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!product) throw new NotFoundError("Товар не найден");
 
-    await prisma.product.update({
-      where: { id },
-      data: { isActive: false },
+    const [sold, received, inRecipe] = await Promise.all([
+      prisma.orderItem.count({ where: { productId: id } }),
+      prisma.stockReceiptItem.count({ where: { productId: id } }),
+      product.isIngredient
+        ? Promise.all([
+            prisma.techCard.count({ where: { tenantId, ingredients: { contains: id } } }),
+            prisma.product.count({ where: { tenantId, techCard: { contains: id } } }),
+          ]).then(([cards, products]) => cards + products)
+        : Promise.resolve(0),
+    ]);
+
+    if (sold || received || inRecipe) {
+      await prisma.product.update({ where: { id }, data: { isActive: false } });
+      return { removed: "archived" };
+    }
+
+    // Остаток, внесённый вручную или импортом, — движения без чеков и приходов: уходят вместе с товаром.
+    await inTransaction(async (tx) => {
+      await tx.inventoryMovement.deleteMany({ where: { tenantId, productId: id } });
+      await tx.product.delete({ where: { id } });
     });
-    return { message: "Product deactivated" };
+    return { removed: "deleted" };
   }
 
   async adjustStock(tenantId: string, productId: string, quantity: number, reason: string, userId: string) {

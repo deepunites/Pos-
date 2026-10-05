@@ -324,9 +324,10 @@ async function updateProduct(tx: Tx, tenantId: string, userId: string, p: Planne
 
 /** Все товары заведения для выгрузки в Excel/CSV (без ингредиентов техкарт). */
 export async function exportProducts(tenantId: string) {
+  // Только то, что продаётся: снятые с продажи в файле лишь мешали бы.
   const products = await prisma.product.findMany({
-    where: { tenantId, isIngredient: false },
-    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+    where: { tenantId, isIngredient: false, isActive: true },
+    orderBy: { name: "asc" },
     select: {
       name: true,
       barcode: true,
@@ -337,7 +338,6 @@ export async function exportProducts(tenantId: string) {
       currentStock: true,
       minStock: true,
       trackInventory: true,
-      isActive: true,
       metadata: true,
       category: { select: { name: true } },
     },
@@ -360,7 +360,6 @@ export async function exportProducts(tenantId: string) {
       costPrice: p.costPrice,
       stock: p.trackInventory ? roundStock(p.currentStock) : null,
       minStock: p.minStock,
-      active: p.isActive,
       ikpu,
     };
   });

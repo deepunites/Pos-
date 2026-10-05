@@ -174,7 +174,6 @@ export interface ExportProduct {
   costPrice: number;
   stock: number | null;
   minStock: number;
-  active: boolean;
   ikpu: string | null;
 }
 
@@ -188,7 +187,6 @@ const EXPORT_COLUMNS: { title: string; width: number; get: (p: ExportProduct) =>
   { title: "Себестоимость", width: 14, get: (p) => p.costPrice },
   { title: "Остаток", width: 10, get: (p) => p.stock },
   { title: "Мин. остаток", width: 12, get: (p) => p.minStock },
-  { title: "Активен", width: 9, get: (p) => (p.active ? "да" : "нет") },
   { title: "ИКПУ", width: 20, get: (p) => p.ikpu },
 ];
 
@@ -202,7 +200,6 @@ const TEMPLATE_EXAMPLE: ExportProduct = {
   costPrice: 11000,
   stock: 24,
   minStock: 5,
-  active: true,
   ikpu: null,
 };
 

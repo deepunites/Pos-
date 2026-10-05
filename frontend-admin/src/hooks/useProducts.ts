@@ -58,9 +58,10 @@ export function useDeleteProduct() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => productService.delete(id),
-    onSuccess: () => {
+    // Без продаж и приходов товар стирается насовсем, с историей — снимается с продажи.
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Товар удалён");
+      toast.success(res.data?.data?.removed === "archived" ? "Товар снят с продажи — история чеков и приходов сохранена" : "Товар удалён");
     },
     onError: (error: Error & { response?: { data?: { error?: string } } }) => {
       toast.error(error.response?.data?.error || "Не удалось удалить товар");

@@ -110,8 +110,14 @@ describe("Products import and export", () => {
     const res = await call("GET", "/products/export", admin);
     expect(res.status).toBe(200);
     const rice = res.body.data.find((p: any) => p.name === "Рис девзира");
-    expect(rice).toMatchObject({ category: "Бакалея", unit: "кг", price: 24000, stock: 50.5, active: true });
+    expect(rice).toMatchObject({ category: "Бакалея", unit: "кг", price: 24000, stock: 50.5 });
     expect(res.body.data.find((p: any) => p.name === "Coca-Cola 1 л")).toMatchObject({ barcode: "5449000000439", sku: "CC-1", unit: "шт", stock: 24 });
+  });
+
+  it("leaves products taken off sale out of the export", async () => {
+    await prisma.product.create({ data: { tenantId: testTenantId, name: "Снятый с продажи", price: 1, isActive: false } });
+    const res = await call("GET", "/products/export", admin);
+    expect(res.body.data.some((p: any) => p.name === "Снятый с продажи")).toBe(false);
   });
 
   describe("cells", () => {

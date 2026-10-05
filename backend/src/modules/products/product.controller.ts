@@ -83,8 +83,8 @@ export class ProductController {
   async delete(req: Request, res: Response) {
     try {
       const id = req.params.id as string;
-      await productService.delete(req.user!.tenantId, id);
-      sendSuccess(res, null, "Product deleted");
+      const result = await productService.delete(req.user!.tenantId, id);
+      sendSuccess(res, result, result.removed === "deleted" ? "Товар удалён" : "Товар снят с продажи");
     } catch (error) {
       handleError(res, error);
     }
