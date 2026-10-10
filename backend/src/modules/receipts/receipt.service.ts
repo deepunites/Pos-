@@ -2,6 +2,7 @@ import type { Prisma, Tenant } from "@prisma/client";
 import prisma from "../../config/database.js";
 import { NotFoundError } from "../../utils/errors.js";
 import { formatMoney } from "../../utils/money.js";
+import { safeTimeZone } from "../../utils/dates.js";
 
 // Receipt HTML is assembled from user-entered strings (shop name, customer
 // name, product names) — escape them so a stray "<" can't break or script the
@@ -29,6 +30,19 @@ const receiptInclude = {
 } satisfies Prisma.OrderInclude;
 
 type ReceiptOrder = Prisma.OrderGetPayload<{ include: typeof receiptInclude }>;
+
+/**
+ * Дата и время продажи для чека — по часам точки. Сервер живёт в UTC, и раньше
+ * чек печатал время сервера в момент печати: в Ташкенте на 5 часов меньше, а
+ * после полуночи — вчерашнюю дату.
+ */
+export function receiptDateTime(soldAt: Date, timeZone: string | null | undefined): { date: string; time: string } {
+  const zone = safeTimeZone(timeZone);
+  return {
+    date: soldAt.toLocaleDateString("ru-RU", { timeZone: zone }),
+    time: soldAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: zone }),
+  };
+}
 
 export interface ReceiptData {
   order: ReceiptOrder;
@@ -92,9 +106,7 @@ export class ReceiptService {
 
   private buildReceiptHTML(data: ReceiptData): string {
     const { order, tenant, items } = data;
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("ru-RU");
-    const timeStr = now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    const { date: dateStr, time: timeStr } = receiptDateTime(order.completedAt ?? order.createdAt, tenant?.timezone);
 
     const retail = tenant?.businessType === "retail";
     const money = (n: unknown) => escapeHtml(formatMoney(Number(n), tenant?.currency));
