@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import type { CashShift } from "../types";
 import { useMoney } from "../hooks/useMoney";
 import { apiErrorMessage } from "../utils/apiError";
+import { useHoldAppUpdate } from "../services/appUpdate";
 
 
 interface OpenShiftScreenProps {
@@ -14,6 +15,7 @@ interface OpenShiftScreenProps {
 }
 
 export default function OpenShiftScreen({ user, onShiftOpened }: OpenShiftScreenProps) {
+  useHoldAppUpdate();
   const { money, symbol, quickAmounts: denominations, compact } = useMoney();
   const [openingCash, setOpeningCash] = useState("");
 

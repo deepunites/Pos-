@@ -8,6 +8,7 @@ import type { Category, Product } from "../types";
 import { useMoney } from "../hooks/useMoney";
 import { weightUnitOf } from "../utils/weight";
 import { apiErrorMessage } from "../utils/apiError";
+import { useHoldAppUpdate } from "../services/appUpdate";
 
 interface StockReceiptScreenProps {
   onClose: () => void;
@@ -44,6 +45,7 @@ function computeSalePrice(costPrice: number, markupPercent: number): number {
 }
 
 export default function StockReceiptScreen({ onClose }: StockReceiptScreenProps) {
+  useHoldAppUpdate();
   const { money } = useMoney();
   const qc = useQueryClient();
 
