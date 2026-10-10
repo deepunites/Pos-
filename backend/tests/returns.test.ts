@@ -79,6 +79,28 @@ describe("Returns at the till", () => {
     expect((await current()).totalReturnsCard).toBe(5000);
   });
 
+  it("does not give money back twice: no payment refund after a till return, no status games with a paid check", async () => {
+    const sale = await sell([{ productId: water.id, quantity: 2 }], 10000);
+    const [line] = await linesOf(sale.id);
+    expect((await giveBack({ orderId: sale.id, items: [{ orderItemId: line.id, quantity: 1 }] })).status).toBe(201);
+    const payment = await prisma.payment.findFirstOrThrow({ where: { orderId: sale.id } });
+
+    const refund = await call("POST", `/payments/${payment.id}/refund`, admin, { reason: "ещё раз" });
+    expect(refund.status).toBe(409);
+    expect(refund.body.error).toMatch(/уже был возврат на кассе/);
+
+    // Оплаченный чек кнопкой статуса не трогают — иначе его можно было отменить и вернуть склад второй раз.
+    expect((await call("PATCH", `/orders/${sale.id}/status`, admin, { status: "served" })).status).toBe(409);
+    expect((await call("POST", `/orders/${sale.id}/cancel`, admin)).status).toBe(409);
+
+    // Неоплаченный заказ «завершённым» не сделать.
+    const unpaid = await call("POST", "/orders", cashier, { type: "takeaway", items: [{ productId: water.id, quantity: 1 }] });
+    expect(unpaid.status, JSON.stringify(unpaid.body)).toBe(201);
+    const done = await call("PATCH", `/orders/${unpaid.body.data.id}/status`, admin, { status: "completed" });
+    expect(done.status).toBe(409);
+    expect(done.body.error).toMatch(/оплачен не полностью/);
+  });
+
   it("keeps a defective item off the shelf", async () => {
     const sale = await sell([{ productId: water.id, quantity: 1 }], 5000);
     const [line] = await linesOf(sale.id);

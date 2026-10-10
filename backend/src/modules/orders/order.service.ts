@@ -416,6 +416,20 @@ export class OrderService {
     const updated = await inTransaction(async (tx) => {
       const order = await lockOrder(tx, tenantId, id);
       if (!order) throw new NotFoundError("Заказ не найден");
+      // Оплаченный или отменённый заказ — итог: деньги по нему меняют возврат и
+      // отмена оплаты, а не кнопка статуса. Иначе оплаченный чек переводили в
+      // «подан» и отменяли — склад возвращался второй раз.
+      if (["completed", "cancelled"].includes(order.status)) {
+        throw new ConflictError("Завершённый или отменённый заказ не меняют — для денег есть возврат");
+      }
+      // «Завершён» — только оплаченный: по неоплаченному «завершённому» чеку
+      // можно было выдать деньги возвратом.
+      if (data.status === "completed") {
+        const paid = await tx.payment.aggregate({ where: { orderId: id, tenantId, status: "completed" }, _sum: { amount: true } });
+        if ((paid._sum.amount ?? 0) < order.total - 0.01) {
+          throw new ConflictError("Заказ оплачен не полностью — примите оплату, и он завершится сам");
+        }
+      }
 
       const updateData: Prisma.OrderUpdateInput = { status: data.status };
       if (data.status === "completed") updateData.completedAt = new Date();
@@ -457,6 +471,11 @@ export class OrderService {
       if (!locked) throw new NotFoundError("Заказ не найден");
       if (["completed", "cancelled"].includes(locked.status)) {
         throw new ConflictError("Этот заказ нельзя отменить");
+      }
+      // Есть принятая оплата — сначала её возврат: отмена вернула бы товар на
+      // склад, а деньги так и числились бы в смене.
+      if ((await tx.payment.count({ where: { orderId: id, tenantId, status: "completed" } })) > 0) {
+        throw new ConflictError("По заказу есть оплата — сначала верните её, потом отменяйте");
       }
 
       const items = await tx.orderItem.findMany({ where: { orderId: id }, include: { product: true } });
