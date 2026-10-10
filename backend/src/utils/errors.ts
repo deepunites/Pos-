@@ -61,6 +61,11 @@ export function toClientError(error: unknown, fallbackStatus = 400): ClientError
     return { status: error.status, message: error.message };
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // Нет свободного соединения, транзакция не уложилась, конфликт записи —
+    // перегрузка, а не ошибка запроса: 503 (касса повторит), и владелец узнает.
+    if (["P2024", "P2028", "P2034"].includes(error.code)) {
+      return { status: 503, message: "Сервер занят — повторите через несколько секунд" };
+    }
     return { status: error.code === "P2025" ? 404 : 400, message: describePrismaError(error) };
   }
   if (

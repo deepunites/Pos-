@@ -31,6 +31,8 @@ const envSchema = z.object({
   // перебора паролей; тестовый сервер поднимает планку, иначе набор тестов,
   // который входит под разными сотрудниками в каждом файле, упирался в неё.
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(30),
+  // Сколько прокси перед сервером: на Railway — край Railway и nginx кассы/панели.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(2),
   // Barcodes the shipped catalogue does not know are looked up live on Open Food
   // Facts (and its sister catalogues). OFF_BASE_URL sends every such lookup to
   // one server instead — the tests stand a stub in for the real thing.

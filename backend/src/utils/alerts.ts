@@ -34,6 +34,8 @@ const SOURCE_TITLE: Record<AlertSource, string> = { server: "сервер", term
 const DEDUP_MS = 15 * 60_000;
 const TELEGRAM_PER_HOUR = 20;
 const SENTRY_PER_HOUR = 200;
+// Ошибки из браузеров — свой предел: они не должны съедать место серверных.
+const CLIENT_TELEGRAM_PER_HOUR = 10;
 
 type Fetch = typeof fetch;
 
@@ -97,6 +99,7 @@ export class AlertHub {
   private seen = new Map<string, Seen>();
   private sentryLast = new Map<string, number>();
   private telegramSent: number[] = [];
+  private clientTelegramSent: number[] = [];
   private sentrySent: number[] = [];
   private mutedNoticeAt = 0;
   private pending = new Set<Promise<unknown>>();
@@ -150,6 +153,15 @@ export class AlertHub {
     if (this.seen.size > 500) this.seen.delete(this.seen.keys().next().value!);
 
     if (!this.config.telegramToken || !this.config.telegramChatId) return;
+    if (source !== "server") {
+      // Ошибку браузера без входа может прислать кто угодно — только в Sentry.
+      if (!context.who) return;
+      this.clientTelegramSent = this.clientTelegramSent.filter((t) => now - t < 3600_000);
+      if (this.clientTelegramSent.length >= CLIENT_TELEGRAM_PER_HOUR) return;
+      this.clientTelegramSent.push(now);
+      this.track(this.sendTelegram(this.format(err, source, context, repeated)));
+      return;
+    }
     this.telegramSent = this.telegramSent.filter((t) => now - t < 3600_000);
     if (this.telegramSent.length >= TELEGRAM_PER_HOUR) {
       if (now - this.mutedNoticeAt > 3600_000) {

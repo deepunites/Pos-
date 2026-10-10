@@ -55,9 +55,11 @@ const io = initSocketIO(httpServer);
 setSocketIO(io);
 
 // Middleware
-// Behind nginx (Docker) / the Vite dev proxy: take the client IP from
-// X-Forwarded-For so rate limiting and audit see real addresses.
-app.set("trust proxy", 1);
+// Адрес клиента — из X-Forwarded-For, через столько прокси, сколько их перед
+// сервером. На Railway их два: край Railway и nginx кассы/панели. При одном
+// (как было) сервер видел адрес края Railway — все магазины делили один лимит
+// входа (30 за 15 минут на всех), а журнал действий писал один и тот же IP.
+app.set("trust proxy", env.TRUST_PROXY_HOPS);
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(compression());
