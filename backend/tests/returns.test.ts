@@ -79,6 +79,16 @@ describe("Returns at the till", () => {
     expect((await current()).totalReturnsCard).toBe(5000);
   });
 
+  it("goes only through the cashier's own shift", async () => {
+    const adminShift = (await call("POST", "/cash-shifts/open", admin, { openingCash: 0 })).body.data.id;
+    const sale = await sell([{ productId: water.id, quantity: 1 }], 5000);
+    const [line] = await linesOf(sale.id);
+    const res = await giveBack({ orderId: sale.id, items: [{ orderItemId: line.id, quantity: 1 }], cashShiftId: adminShift });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/смена другого кассира/);
+    await call("POST", `/cash-shifts/${adminShift}/close`, admin, { closingCash: 0 });
+  });
+
   it("keeps a defective item off the shelf", async () => {
     const sale = await sell([{ productId: water.id, quantity: 1 }], 5000);
     const [line] = await linesOf(sale.id);

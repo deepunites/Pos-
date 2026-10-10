@@ -16,6 +16,7 @@ router.get("/summary", authorize("admin", "manager"), (req, res) => customerCont
 router.get("/:id", (req, res) => customerController.findById(req, res));
 router.post("/", validate(createCustomerSchema), auditLog("customer.create", "customer"), (req, res) => customerController.create(req, res));
 router.patch("/:id", authorize("admin", "manager"), validate(updateCustomerSchema), auditLog("customer.update", "customer"), (req, res) => customerController.update(req, res));
-router.post("/:id/repayments", validate(repaymentSchema), auditLog("customer.repayment", "customer"), (req, res) => customerController.repay(req, res));
+// Деньги в кассу принимают касса и управляющие; официант и кухня — нет.
+router.post("/:id/repayments", authorize("admin", "manager", "cashier"), validate(repaymentSchema), auditLog("customer.repayment", "customer"), (req, res) => customerController.repay(req, res));
 
 export default router;
