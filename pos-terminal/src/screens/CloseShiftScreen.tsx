@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import type { CashShift } from "../types";
 import { useMoney } from "../hooks/useMoney";
 import { apiErrorMessage } from "../utils/apiError";
+import { useHoldAppUpdate } from "../services/appUpdate";
 
 
 interface CloseShiftScreenProps {
@@ -15,6 +16,7 @@ interface CloseShiftScreenProps {
 }
 
 export default function CloseShiftScreen({ shiftId, onShiftClosed, onCancel }: CloseShiftScreenProps) {
+  useHoldAppUpdate();
   const { money, symbol } = useMoney();
   const [closingCash, setClosingCash] = useState("");
   const [notes, setNotes] = useState("");

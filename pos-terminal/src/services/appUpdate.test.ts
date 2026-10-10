@@ -21,7 +21,7 @@ async function setup(hadController: boolean) {
   const update = await import("./appUpdate");
   const { useCartStore } = await import("../store/cartStore");
   update.watchAppUpdate();
-  return { listeners, reload, useAppUpdate: update.useAppUpdate, useCartStore };
+  return { listeners, reload, useAppUpdate: update.useAppUpdate, useCartStore, holdAppUpdate: update.holdAppUpdate };
 }
 
 describe("app update", () => {
@@ -54,6 +54,29 @@ describe("app update", () => {
     expect(reload).not.toHaveBeenCalled();
 
     document.body.innerHTML = "";
+    vi.advanceTimersByTime(10_000);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits while a screen with typing on it is open (stock receipt, closing the shift)", async () => {
+    const { listeners, reload, useCartStore, holdAppUpdate } = await setup(true);
+    useCartStore.setState({ items: [] });
+    const release = holdAppUpdate();
+    listeners.controllerchange();
+    vi.advanceTimersByTime(120_000);
+    expect(reload).not.toHaveBeenCalled();
+
+    release();
+    vi.advanceTimersByTime(10_000);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("after the very first install, picks up the next version by itself", async () => {
+    const { listeners, reload, useAppUpdate, useCartStore } = await setup(false);
+    useCartStore.setState({ items: [] });
+    listeners.controllerchange(); // первая установка взяла страницу
+    listeners.controllerchange(); // а это уже новая версия
+    expect(useAppUpdate.getState().ready).toBe(true);
     vi.advanceTimersByTime(10_000);
     expect(reload).toHaveBeenCalledTimes(1);
   });

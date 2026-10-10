@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import api from "../services/api";
 import type { Order } from "../types";
 import { useMoney } from "../hooks/useMoney";
+import { useHoldAppUpdate } from "../services/appUpdate";
 
 
 const sportQuotes = [
@@ -29,6 +30,7 @@ interface ReceiptModalProps {
 }
 
 export default function ReceiptModal({ order, onNewOrder }: ReceiptModalProps) {
+  useHoldAppUpdate();
   const { money, shopName } = useMoney();
   const [showSuccess, setShowSuccess] = useState(true);
   const quote = useMemo(() => getRandomQuote(), []);
