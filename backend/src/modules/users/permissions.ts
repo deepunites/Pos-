@@ -65,5 +65,12 @@ export function blindShift<T extends object | null>(shift: T): T {
   if (!shift) return shift;
   const copy: Record<string, unknown> = { ...shift, blind: true };
   for (const key of SHIFT_MONEY) delete copy[key];
+  // Чеки смены с суммами и оплатами по способам: из них ожидаемая сумма
+  // считается за секунду. Слепой смене — только их число.
+  for (const [key, value] of Object.entries(copy)) {
+    if (!Array.isArray(value)) continue;
+    if (key === "orders") copy.ordersCount = value.length;
+    delete copy[key];
+  }
   return copy as T;
 }

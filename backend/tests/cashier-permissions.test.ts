@@ -83,7 +83,11 @@ describe("Cashier permissions", () => {
     expect(current).toMatchObject({ id: shiftId, openingCash: 50000, blind: true });
     expect(current.expectedCash).toBeUndefined();
     expect(current.totalCashSales).toBeUndefined();
-    expect((await call("GET", `/cash-shifts/${shiftId}`, cashier)).body.data.expectedCash).toBeUndefined();
+    expect(current.orders).toBeUndefined(); // суммы чеков — та же ожидаемая сумма
+    const byId = (await call("GET", `/cash-shifts/${shiftId}`, cashier)).body.data;
+    expect(byId.expectedCash).toBeUndefined();
+    expect(byId.orders).toBeUndefined();
+    expect(typeof byId.ordersCount).toBe("number");
 
     const closed = await call("POST", `/cash-shifts/${shiftId}/close`, cashier, { closingCash: 59000 });
     expect(closed.status).toBe(200);
