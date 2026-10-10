@@ -3,7 +3,14 @@ import { logger } from "../utils/logger.js";
 import { sendError } from "../utils/response.js";
 import { alerts, requestContext } from "../utils/alerts.js";
 
-export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
+export function errorHandler(err: Error & { type?: string; status?: number }, req: Request, res: Response, _next: NextFunction): void {
+  // Битый JSON или слишком большое тело — ошибка клиента (express.json), не
+  // наша: без уведомления, иначе любой снаружи мог засыпать Telegram.
+  if (typeof err.type === "string" && err.type.startsWith("entity.") && err.status && err.status < 500) {
+    sendError(res, err.status === 413 ? "Слишком большой запрос" : "Некорректный JSON в запросе", err.status);
+    return;
+  }
+
   logger.error("Unhandled error", {
     error: err.message,
     stack: err.stack,

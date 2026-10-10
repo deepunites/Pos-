@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { Prisma } from "@prisma/client";
 import { AlertHub, isBug, parseDsn, stackFrames } from "../src/utils/alerts.js";
+import { toClientError } from "../src/utils/errors.js";
 import { BASE_URL } from "./helpers.js";
 
 // Уведомления об ошибках владельцу: Telegram + Sentry, склейка повторов,
@@ -47,12 +49,12 @@ describe("alerts", () => {
     const { h, sent, tick } = hub();
     // Одна и та же ошибка — одно место в коде.
     const boom = () => Object.assign(new TypeError("boom"), { stack: "TypeError: boom\n    at f (/app/src/x.ts:1:1)" });
-    for (let i = 0; i < 5; i++) h.report(boom(), { source: "terminal", where: "/" });
+    for (let i = 0; i < 5; i++) h.report(boom(), { source: "terminal", where: "/", who: "aziza (cashier)" });
     await h.flush();
     expect(telegram(sent)).toHaveLength(1);
     expect(telegram(sent)[0]).toContain("Qwik · касса");
     tick(16 * 60_000);
-    h.report(boom(), { source: "terminal", where: "/" });
+    h.report(boom(), { source: "terminal", where: "/", who: "aziza (cashier)" });
     await h.flush();
     expect(telegram(sent)).toHaveLength(2);
     expect(telegram(sent)[1]).toContain("Повторилась ещё 4 раз");
@@ -106,6 +108,33 @@ describe("alerts", () => {
     expect(parseDsn("https://k@sentry.example.com/sub/7")).toEqual({ url: "https://sentry.example.com/sub/api/7/envelope/", key: "k" });
     expect(parseDsn("not a dsn")).toBeNull();
     expect(stackFrames("Error\n    at http://pos.qwik.uz/assets/index-abc.js:1:2345")[0]).toMatchObject({ filename: "http://pos.qwik.uz/assets/index-abc.js", lineno: 1, colno: 2345 });
+  });
+
+  it("send browser errors to Telegram only from signed-in users, with their own hourly budget", async () => {
+    const { h, sent } = hub();
+    h.report(new Error("anonymous noise"), { source: "terminal" });
+    await h.flush();
+    expect(telegram(sent)).toHaveLength(0); // без входа — кто угодно, в Telegram не пускаем
+
+    for (let i = 0; i < 15; i++) h.report(new Error(`касса ${i}`), { source: "terminal", who: "aziza (cashier)" });
+    await h.flush();
+    expect(telegram(sent)).toHaveLength(10);
+
+    // Серверные ошибки свой предел не делят с браузерными.
+    h.report(new TypeError("server bug"), { where: "POST /api/orders/checkout", status: 500 });
+    await h.flush();
+    expect(telegram(sent).at(-1)).toContain("server bug");
+  });
+
+  it("treat a busy database as an outage (503), not as a bad request", () => {
+    const busy = new Prisma.PrismaClientKnownRequestError("Timed out fetching a new connection", { code: "P2024", clientVersion: "6" });
+    expect(toClientError(busy)).toMatchObject({ status: 503 });
+    expect(isBug(busy, 503)).toBe(true);
+  });
+
+  it("answer broken JSON with 400 instead of a server error", async () => {
+    const res = await fetch(`${BASE_URL}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{oops" });
+    expect(res.status).toBe(400);
   });
 
   it("take browser errors at /client-errors without a sign-in, and check what comes in", async () => {
