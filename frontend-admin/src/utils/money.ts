@@ -19,7 +19,7 @@ const FORMATS: Record<string, CurrencyFormat> = {
   KZT: { symbol: "₸", suffix: true, fractionDigits: 0, locale: "ru-RU" },
 };
 
-const DEFAULT_CURRENCY = "USD";
+const DEFAULT_CURRENCY = "UZS";
 
 export function currencyFormat(currency?: string | null): CurrencyFormat {
   return FORMATS[(currency || DEFAULT_CURRENCY).toUpperCase()] ?? {

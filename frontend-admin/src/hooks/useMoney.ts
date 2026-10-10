@@ -9,7 +9,7 @@ import { currencySymbol, formatMoney } from "../utils/money";
 export function useMoney() {
   const { data: settings } = useSettings();
 
-  const currency: string = settings?.currency || "USD";
+  const currency: string = settings?.currency || "UZS";
 
   return {
     currency,
