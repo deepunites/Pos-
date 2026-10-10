@@ -104,6 +104,11 @@ export class PaymentService {
       // Блокировка заказа — иначе два одновременных возврата одного платежа
       // (или возврат во время оплаты) оба видели бы платёж «completed».
       await lockOrder(tx, tenantId, target.orderId);
+      // По чеку уже был возврат на кассе: он вернул деньги за свою часть, а
+      // возврат всего платежа вернул бы её второй раз (и долг ушёл бы в минус).
+      if ((await tx.saleReturn.count({ where: { tenantId, orderId: target.orderId } })) > 0) {
+        throw new ConflictError("По этому чеку уже был возврат на кассе — остальное верните там же, возвратом по чеку");
+      }
       const payment = await tx.payment.findFirst({
         where: { id: paymentId, tenantId, status: "completed" },
         include: { order: { include: { payments: true } } },
