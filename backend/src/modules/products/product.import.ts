@@ -39,7 +39,7 @@ export type ImportRow = z.infer<typeof importRowSchema>;
 export type ImportKind = "create" | "update" | "same" | "error";
 
 export interface ImportChange {
-  field: "name" | "barcode" | "sku" | "category" | "unit" | "price" | "costPrice" | "stock" | "minStock";
+  field: "name" | "barcode" | "sku" | "category" | "unit" | "price" | "costPrice" | "stock" | "minStock" | "active";
   from: string | number | null;
   to: string | number | null;
 }
@@ -69,12 +69,17 @@ const text = (v: unknown): string | undefined => {
   return s === "" ? undefined : s;
 };
 
-/** «9 000», «13 000,50», «1.234,5», 9000 → число; пусто → undefined; мусор → NaN. */
-export function parseAmount(v: unknown): number | undefined {
+/**
+ * «9 000», «13 000,50», «1.234,5», 9000 → число; пусто → undefined; мусор → NaN.
+ * money: цена в сумах — «14,000» и «1,250,000» это тысячи (так пишет Excel с
+ * английской локалью), а не 14 сум. У остатка «1,500» кг — по-прежнему 1,5.
+ */
+export function parseAmount(v: unknown, money = false): number | undefined {
   if (v === null || v === undefined) return undefined;
   if (typeof v === "number") return Number.isFinite(v) ? v : NaN;
   let s = String(v).replace(/[\s\u00A0\u202F]/g, "").replace(/(сўм|сум|руб|₽|\$|so'm)/gi, "");
   if (s === "") return undefined;
+  if (money && /^-?\d{1,3}(,\d{3})+$/.test(s)) s = s.replace(/,/g, "");
   // «1.234,5» — точка тысяч, запятая дроби; «1,234.5» — наоборот.
   if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   else s = s.replace(",", ".");
@@ -87,6 +92,9 @@ export function weighedUnit(v: unknown): boolean | undefined {
   if (!s) return undefined;
   return /^(кг|kg|кило|килограмм\w*)$/.test(s);
 }
+
+/** Название для сравнения: без регистра и лишних пробелов. */
+const nameKey = (name: string): string => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 /** Ключ штрихкода для сравнения: «054881005500» и «54881005500» — один товар (UPC-A и EAN-13). */
 const barcodeKey = (code: string): string => (/^\d+$/.test(code) ? code.replace(/^0+/, "") : code.toLowerCase());
@@ -143,11 +151,17 @@ export async function importProducts(tenantId: string, userId: string, rows: Imp
   });
   const byBarcode = new Map<string, ExistingProduct>();
   const bySku = new Map<string, ExistingProduct>();
+  // Хлеб, развес, блюда — без штрихкода и артикула: их узнаём по названию,
+  // иначе каждая повторная загрузка файла создавала копии.
+  const byName = new Map<string, ExistingProduct[]>();
   for (const p of existing) {
     if (p.barcode) byBarcode.set(barcodeKey(p.barcode), p);
     if (p.sku) bySku.set(p.sku.toLowerCase(), p);
+    const key = nameKey(p.name);
+    byName.set(key, [...(byName.get(key) ?? []), p]);
   }
-  const categories = await prisma.category.findMany({ where: { tenantId }, select: { id: true, name: true } });
+  // Категории ингредиентов техкарт — не полки: товар в них касса не покажет.
+  const categories = await prisma.category.findMany({ where: { tenantId, isIngredient: false }, select: { id: true, name: true } });
   const categoryById = new Map(categories.map((c) => [c.id, c.name]));
   const categoryByName = new Map(categories.map((c) => [c.name.trim().toLowerCase(), c.id]));
 
@@ -155,13 +169,14 @@ export async function importProducts(tenantId: string, userId: string, rows: Imp
   const seenSku = new Map<string, number>();
   // Один товар — одна строка файла: иначе вторая молча перезапишет первую.
   const seenProduct = new Map<string, number>();
+  const seenNewName = new Map<string, number>();
   const plan: Planned[] = rows.map((r) => {
     const name = text(r.name);
     const barcode = text(r.barcode)?.replace(/\s/g, "");
     const sku = text(r.sku);
     const category = text(r.category);
     const weighed = weighedUnit(r.unit);
-    const nums = { price: parseAmount(r.price), costPrice: parseAmount(r.costPrice), stock: parseAmount(r.stock), minStock: parseAmount(r.minStock) };
+    const nums = { price: parseAmount(r.price, true), costPrice: parseAmount(r.costPrice, true), stock: parseAmount(r.stock), minStock: parseAmount(r.minStock) };
     const fail = (message: string): Planned => ({ row: r.row, kind: "error", name: name ?? "", message, changes: [], data: {} });
 
     const labels = { price: "цена продажи", costPrice: "себестоимость", stock: "остаток", minStock: "мин. остаток" } as const;
@@ -183,12 +198,26 @@ export async function importProducts(tenantId: string, userId: string, rows: Imp
       seenSku.set(sku.toLowerCase(), r.row);
     }
 
-    const product = (barcode && byBarcode.get(barcodeKey(barcode))) || (sku && bySku.get(sku.toLowerCase())) || undefined;
+    let product = (barcode && byBarcode.get(barcodeKey(barcode))) || (sku && bySku.get(sku.toLowerCase())) || undefined;
+    let matchedByName = false;
+    if (!product && !barcode && !sku && name) {
+      const same = byName.get(nameKey(name)) ?? [];
+      const active = same.filter((p) => p.isActive);
+      const candidates = active.length ? active : same;
+      if (candidates.length > 1) return fail(`товаров «${name}» несколько — укажите артикул или штрихкод`);
+      product = candidates[0];
+      matchedByName = !!product;
+    }
     const data = { name, barcode, sku, category, weighed, ...nums };
 
     if (!product) {
       if (!name) return fail("нет названия");
       if (nums.price === undefined) return fail("нет цены продажи");
+      if (!barcode && !sku) {
+        const earlier = seenNewName.get(nameKey(name));
+        if (earlier) return fail(`товар «${name}» уже в строке ${earlier}`);
+        seenNewName.set(nameKey(name), r.row);
+      }
       return { row: r.row, kind: "create", name, changes: [], data };
     }
 
@@ -203,7 +232,8 @@ export async function importProducts(tenantId: string, userId: string, rows: Imp
     if (otherBySku && otherBySku.id !== product.id) return fail(`артикул ${sku} уже у товара «${otherBySku.name}»`);
 
     const changes: ImportChange[] = [];
-    if (name && name !== product.name) changes.push({ field: "name", from: product.name, to: name });
+    // Нашли по названию — регистр и пробелы в файле не повод переименовывать.
+    if (name && name !== product.name && !matchedByName) changes.push({ field: "name", from: product.name, to: name });
     // Excel съедает ведущий ноль («054881005500» → «54881005500») — это тот же
     // штрихкод, и правильный в базе им не перезаписываем.
     if (barcode && (!product.barcode || barcodeKey(barcode) !== barcodeKey(product.barcode))) {
@@ -217,6 +247,9 @@ export async function importProducts(tenantId: string, userId: string, rows: Imp
     if (nums.price !== undefined && Math.abs(nums.price - product.price) > EPS) changes.push({ field: "price", from: product.price, to: round2(nums.price) });
     if (nums.costPrice !== undefined && Math.abs(nums.costPrice - product.costPrice) > EPS) changes.push({ field: "costPrice", from: product.costPrice, to: round2(nums.costPrice) });
     if (nums.minStock !== undefined && Math.abs(nums.minStock - product.minStock) > EPS) changes.push({ field: "minStock", from: product.minStock, to: roundStock(nums.minStock) });
+    // Снятый с продажи товар, который снова пришёл в файле, возвращается в продажу:
+    // иначе «обновится» в проверке, а на кассе и в выгрузке его нет.
+    if (!product.isActive) changes.push({ field: "active", from: "снят с продажи", to: "в продаже" });
     if (nums.stock !== undefined && (Math.abs(nums.stock - product.currentStock) > EPS || !product.trackInventory)) {
       changes.push({ field: "stock", from: product.trackInventory ? roundStock(product.currentStock) : null, to: roundStock(nums.stock) });
     }
@@ -306,6 +339,7 @@ async function updateProduct(tx: Tx, tenantId: string, userId: string, p: Planne
   if (has("price")) data.price = round2(d.price!);
   if (has("costPrice")) data.costPrice = round2(d.costPrice!);
   if (has("minStock")) data.minStock = roundStock(d.minStock!);
+  if (has("active")) data.isActive = true;
   if (has("stock")) {
     // Остаток читается заново под блокировкой: продажа могла пройти после проверки.
     const fresh = await tx.product.findUniqueOrThrow({ where: { id: product.id }, select: { currentStock: true, trackInventory: true } });

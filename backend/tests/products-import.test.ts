@@ -95,8 +95,8 @@ describe("Products import and export", () => {
 
   it("never touches another shop's products", async () => {
     const other = await prisma.tenant.create({ data: { name: "Other", slug: "other-import", email: "i@x.uz" } });
-    const theirs = await prisma.product.create({ data: { tenantId: other.id, name: "Чужая вода", barcode: "4780033333333", price: 1 } });
-    const res = await importRows([{ row: 2, name: "Вода", barcode: "4780033333333", price: 3000 }], true);
+    const theirs = await prisma.product.create({ data: { tenantId: other.id, name: "Чужая вода", barcode: "4780099999917", price: 1 } });
+    const res = await importRows([{ row: 2, name: "Вода", barcode: "4780099999917", price: 3000 }], true);
     expect(res.body.data.summary.create).toBe(1);
     expect((await prisma.product.findUniqueOrThrow({ where: { id: theirs.id } })).price).toBe(1);
   });
@@ -120,7 +120,39 @@ describe("Products import and export", () => {
     expect(res.body.data.some((p: any) => p.name === "Снятый с продажи")).toBe(false);
   });
 
+  it("matches goods without barcode and SKU by name — a re-import does not duplicate them", async () => {
+    await prisma.product.create({ data: { tenantId: testTenantId, name: "Нон белый", price: 4000, trackInventory: true, currentStock: 5 } });
+    const before = await prisma.product.count({ where: { tenantId: testTenantId } });
+    const res = await importRows([{ row: 2, name: "  нон   БЕЛЫЙ ", price: "4 500" }], true);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.data.items[0]).toMatchObject({ kind: "update", changes: [{ field: "price", from: 4000, to: 4500 }] });
+    expect(await prisma.product.count({ where: { tenantId: testTenantId } })).toBe(before);
+  });
+
+  it("refuses to guess between two goods with the same name and no codes, and between two new rows", async () => {
+    await prisma.product.createMany({ data: [1, 2].map(() => ({ tenantId: testTenantId, name: "Самса", price: 6000 })) });
+    const res = await importRows([{ row: 2, name: "Самса", price: 7000 }, { row: 3, name: "Лепёшка новая", price: 3000 }, { row: 4, name: "лепёшка новая", price: 3000 }], false);
+    const byRow = (row: number) => res.body.data.items.find((i: any) => i.row === row);
+    expect(byRow(2).message).toBe("товаров «Самса» несколько — укажите артикул или штрихкод");
+    expect(byRow(3).kind).toBe("create");
+    expect(byRow(4).message).toBe("товар «лепёшка новая» уже в строке 3");
+  });
+
+  it("brings an archived product back on sale when the file has it", async () => {
+    const id = (await prisma.product.create({ data: { tenantId: testTenantId, name: "Квас 1 л", barcode: "4780055500017", price: 7000, isActive: false } })).id;
+    const res = await importRows([{ row: 2, name: "Квас 1 л", barcode: "4780055500017", price: 7000 }], true);
+    expect(res.body.data.items[0]).toMatchObject({ kind: "update", changes: [{ field: "active" }] });
+    expect((await prisma.product.findUniqueOrThrow({ where: { id } })).isActive).toBe(true);
+  });
+
   describe("cells", () => {
+    it("reads sum prices with English thousands separators, but keeps kilograms decimal", () => {
+      expect(parseAmount("14,000", true)).toBe(14000);
+      expect(parseAmount("1,250,000", true)).toBe(1250000);
+      expect(parseAmount("14,5", true)).toBe(14.5);
+      expect(parseAmount("1,500")).toBe(1.5); // остаток в кг
+    });
+
     it("reads amounts the way people type them", () => {
       expect(parseAmount("9 000")).toBe(9000);
       expect(parseAmount("13 000,50")).toBe(13000.5);

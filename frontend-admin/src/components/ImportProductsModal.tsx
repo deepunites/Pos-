@@ -38,6 +38,7 @@ const FIELD_NAMES: Record<ImportChange["field"], string> = {
   costPrice: "себестоимость",
   stock: "остаток",
   minStock: "мин. остаток",
+  active: "продажа",
 };
 
 const num = (v: string | number | null) => (v === null ? "—" : typeof v === "number" ? v.toLocaleString("ru-RU", { maximumFractionDigits: 3 }) : v);
@@ -48,7 +49,9 @@ function describe(item: ImportItem, sent: ImportRow | undefined): string {
   if (item.kind === "update") {
     return item.changes
       .map((c) =>
-        c.from === null || c.from === ""
+        c.field === "active"
+          ? "вернётся в продажу"
+          : c.from === null || c.from === ""
           ? `${FIELD_NAMES[c.field]} ${num(c.to)}${c.field === "stock" ? " (начнём считать)" : ""}`
           : `${FIELD_NAMES[c.field]} ${num(c.from)} → ${num(c.to)}`
       )

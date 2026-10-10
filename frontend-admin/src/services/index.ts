@@ -263,7 +263,7 @@ export const productService = {
 
 export type ImportKind = "create" | "update" | "same" | "error";
 export interface ImportChange {
-  field: "name" | "barcode" | "sku" | "category" | "unit" | "price" | "costPrice" | "stock" | "minStock";
+  field: "name" | "barcode" | "sku" | "category" | "unit" | "price" | "costPrice" | "stock" | "minStock" | "active";
   from: string | number | null;
   to: string | number | null;
 }
