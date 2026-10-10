@@ -54,7 +54,7 @@ export class CustomerController {
       const { value, replayed } = await withIdempotency(
         tenantId,
         idem,
-        () => customerService.repay(tenantId, req.user!.id, id, req.body, idem),
+        () => customerService.repay(tenantId, req.user!.id, id, req.body, idem, req.user!.role),
         (entryId) => customerService.repaymentResult(tenantId, entryId)
       );
       if (replayed) res.setHeader("Idempotent-Replayed", "true");

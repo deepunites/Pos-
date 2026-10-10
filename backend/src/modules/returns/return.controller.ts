@@ -24,7 +24,7 @@ export class ReturnController {
       const { value, replayed } = await withIdempotency(
         tenantId,
         idem,
-        () => returnService.create(tenantId, req.user!.id, req.body, idem),
+        () => returnService.create(tenantId, req.user!.id, req.body, idem, req.user!.role),
         (id) => returnService.findById(tenantId, id)
       );
       if (replayed) res.setHeader("Idempotent-Replayed", "true");

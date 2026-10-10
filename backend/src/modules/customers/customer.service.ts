@@ -6,6 +6,7 @@ import { inTransaction } from "../../utils/transaction.js";
 import { attachIdempotencyResource, claimIdempotencyKey, type IdempotencyContext } from "../../utils/idempotency.js";
 import { round2, type Tx } from "../inventory/stock.helpers.js";
 import { debtAgeDays, debtLabel, oldestUnpaidDebt, type DebtLabel } from "./customer.debt.js";
+import { isSupervisor, openShiftForMoney } from "../cash-shifts/shift.guard.js";
 import type { CreateCustomerInput, CustomerQueryInput, RepaymentInput, UpdateCustomerInput } from "./customer.schema.js";
 
 type CustomerRow = Prisma.CustomerGetPayload<object>;
@@ -128,7 +129,7 @@ export const customerService = {
   },
 
   /** Клиент приносит деньги в счёт долга — на кассе (в её смену) или в админке. */
-  async repay(tenantId: string, userId: string, id: string, input: RepaymentInput, idem?: IdempotencyContext | null) {
+  async repay(tenantId: string, userId: string, id: string, input: RepaymentInput, idem?: IdempotencyContext | null, role = "cashier") {
     const entryId = await inTransaction(async (tx) => {
       await claimIdempotencyKey(tx, tenantId, idem);
       const customer = await lockCustomer(tx, tenantId, id);
@@ -137,10 +138,11 @@ export const customerService = {
       if (amount > customer.debtBalance + 0.01) {
         throw new AppError(`Это больше долга клиента (${round2(customer.debtBalance)})`);
       }
-      if (input.cashShiftId) {
-        const shift = await tx.cashShift.findFirst({ where: { id: input.cashShiftId, tenantId, status: "open" }, select: { id: true } });
-        if (!shift) throw new AppError("Смена не найдена или уже закрыта");
-      }
+      // Кассир принимает погашение в свою открытую смену — деньги должны
+      // оказаться в ящике, который она закроет. Управляющий и администратор
+      // могут записать погашение и без смены (деньги принял владелец).
+      if (input.cashShiftId) await openShiftForMoney(tx, { tenantId, shiftId: input.cashShiftId, userId, role });
+      else if (!isSupervisor(role)) throw new AppError("Откройте смену, чтобы принять погашение долга");
       const entry = await tx.customerDebtEntry.create({
         data: {
           tenantId,

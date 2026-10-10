@@ -8,6 +8,7 @@ import { lockOrder } from "../orders/order.locks.js";
 import { refundDebt } from "../customers/customer.service.js";
 import { barcodeVariants } from "../catalog/gtin.js";
 import type { CreateReturnInput } from "./return.schema.js";
+import { openShiftForMoney } from "../cash-shifts/shift.guard.js";
 
 // Возврат товара на кассе. По чеку: кассир отмечает, какие строки и сколько
 // вернули, сумма — доля строки в оплаченном чеке (со скидкой), больше
@@ -157,12 +158,11 @@ export const returnService = {
     return found;
   },
 
-  async create(tenantId: string, userId: string, data: CreateReturnInput, idem?: IdempotencyContext | null) {
+  async create(tenantId: string, userId: string, data: CreateReturnInput, idem?: IdempotencyContext | null, role = "cashier") {
     const id = await inTransaction(async (tx) => {
       await claimIdempotencyKey(tx, tenantId, idem);
 
-      const shift = await tx.cashShift.findFirst({ where: { id: data.cashShiftId, tenantId, status: "open" } });
-      if (!shift) throw new NotFoundError("Открытая смена не найдена");
+      const shift = await openShiftForMoney(tx, { tenantId, shiftId: data.cashShiftId, userId, role });
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } });
       const retail = tenant?.businessType === "retail";
 
