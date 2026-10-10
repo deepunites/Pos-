@@ -46,7 +46,7 @@ export function useMoney() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const currency: string = settings?.currency || "USD";
+  const currency: string = settings?.currency || "UZS";
 
   return {
     currency,

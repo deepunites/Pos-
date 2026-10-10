@@ -27,7 +27,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("general");
 
   // General settings
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", timezone: "UTC", currency: "USD", taxRate: 0, defaultMarkupPercent: 0 });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", timezone: "Asia/Tashkent", currency: "UZS", taxRate: 0, defaultMarkupPercent: 0 });
 
   // Product settings
   const [units, setUnits] = useState<Unit[]>(DEFAULT_UNITS);
@@ -43,7 +43,7 @@ export default function Settings() {
     if (settings) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- заполнение формы из ответа сервера
       setCatalogSharing(settings.catalogSharing !== false);
-      setForm({ name: settings.name || "", phone: settings.phone || "", email: settings.email || "", address: settings.address || "", timezone: settings.timezone || "UTC", currency: settings.currency || "USD", taxRate: Number(settings.taxRate) || 0, defaultMarkupPercent: Number(settings.defaultMarkupPercent) || 0 });
+      setForm({ name: settings.name || "", phone: settings.phone || "", email: settings.email || "", address: settings.address || "", timezone: settings.timezone || "Asia/Tashkent", currency: settings.currency || "UZS", taxRate: Number(settings.taxRate) || 0, defaultMarkupPercent: Number(settings.defaultMarkupPercent) || 0 });
       try {
         const parsed = JSON.parse(settings.settings || "{}");
         if (parsed.units && Array.isArray(parsed.units) && parsed.units.length > 0) {

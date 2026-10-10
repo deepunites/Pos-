@@ -27,7 +27,7 @@ describe("formatMoney", () => {
     expect(formatMoney(null, "USD")).toBe("$0.00");
     expect(formatMoney("abc", "USD")).toBe("$0.00");
     expect(nb(formatMoney(10, "GBP"))).toBe("10,00 GBP");
-    expect(currencyFormat(undefined).symbol).toBe("$");
+    expect(currencyFormat(undefined).symbol).toBe("сўм"); // точка без валюты — сумы (продаём в Узбекистане)
     expect(currencySymbol("uzs")).toBe("сўм");
   });
 });

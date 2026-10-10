@@ -20,7 +20,7 @@ const FORMATS: Record<string, CurrencyFormat> = {
 };
 
 export function formatMoney(amount: number | string | null | undefined, currency?: string | null): string {
-  const code = (currency || "USD").toUpperCase();
+  const code = (currency || "UZS").toUpperCase();
   const fmt = FORMATS[code] ?? { symbol: code, suffix: true, fractionDigits: 2, locale: "ru-RU" };
   const text = (Number(amount) || 0).toLocaleString(fmt.locale, {
     minimumFractionDigits: fmt.fractionDigits,

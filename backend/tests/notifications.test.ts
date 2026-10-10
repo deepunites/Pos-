@@ -119,7 +119,7 @@ describe("Notification texts", () => {
     expect(formatMoney(1234.5, "USD")).toBe("$1,234.50");
     expect(formatMoney(1234.5, "EUR")).toBe("1.234,50 €");
     expect(formatMoney(1234.5, "RUB")).toMatch(/^1\s234,50 ₽$/);
-    expect(formatMoney(5, null)).toBe("$5.00");
+    expect(formatMoney(5, null)).toMatch(/^5 сўм$/); // без валюты — сумы
     expect(formatMoney(5, "GBP")).toBe("5,00 GBP");
   });
 

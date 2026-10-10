@@ -19,8 +19,10 @@ model Tenant {
   phone                 String?
   email                 String?
   address               String?
-  timezone              String    @default("UTC")
-  currency              String    @default("USD")
+  // Продаём в Узбекистане: новая точка сразу считает в сумах и по ташкентскому
+  // времени (иначе отчёты «за сегодня» начинались бы в 5 утра).
+  timezone              String    @default("Asia/Tashkent")
+  currency              String    @default("UZS")
   taxRate               Float     @default(0) @map("tax_rate")
   defaultMarkupPercent  Float     @default(0) @map("default_markup_percent")
   // Делится ли магазин с общей базой штрихкодов тем, что вносит сам: штрихкод,
