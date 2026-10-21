@@ -405,8 +405,51 @@ export const stockReceiptService = {
       updateSalePrice?: boolean;
     }[];
   }) => api.post("/stock-receipts", data),
+  /**
+   * Приход из Excel: apply=false — только проверка, ничего не пишет; true —
+   * проводит один приход. Ключ — один на окно: повтор после обрыва связи
+   * вернёт уже проведённый приход, а не проведёт второй.
+   */
+  importRows: (payload: ReceiptImportInput, idempotencyKey?: string) =>
+    api.post<ApiResponse<ReceiptImportResult>>("/stock-receipts/import", payload, {
+      timeout: 120_000,
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    }),
   delete: (id: string) => api.delete(`/stock-receipts/${id}`),
 };
+
+export interface ReceiptImportInput {
+  /** Те же строки, что у импорта товаров: stock — сколько пришло, costPrice — цена закупки, price — цена продажи. */
+  rows: ImportRow[];
+  apply: boolean;
+  supplierName?: string;
+  invoiceNumber?: string;
+  notes?: string;
+}
+/** Строка файла прихода: товар есть в базе, создастся новый или ошибка. */
+export interface ReceiptImportItem {
+  row: number;
+  kind: "existing" | "new" | "error";
+  name: string;
+  message?: string;
+  productId?: string;
+  quantity?: number;
+  costPrice?: number;
+  /** Цена продажи из файла; null — в файле её нет. */
+  salePrice?: number | null;
+  /** Цена продажи найденного товара сейчас. */
+  currentPrice?: number | null;
+  priceChanged?: boolean;
+  sum?: number;
+}
+export interface ReceiptImportResult {
+  applied: boolean;
+  receipt?: { id: string; receiptNumber: string; totalAmount: number };
+  /** По всем строкам файла, даже если items обрезан. */
+  summary: { existing: number; new: number; error: number; quantity: number; totalCost: number; totalSale: number };
+  /** Ошибки первыми, затем по строкам; не больше 500. */
+  items: ReceiptImportItem[];
+}
 
 export const cashShiftService = {
   list: (params?: Record<string, string | number | boolean | undefined>) => api.get("/cash-shifts", { params }),

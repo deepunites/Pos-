@@ -68,14 +68,18 @@ export function stockUnitsFor(
  * - Повторная блокировка уже своих строк мгновенна, поэтому звать можно
  *   несколько раз за транзакцию.
  */
-export async function lockStockRows(tx: Tx, tenantId: string, productIds: string[]): Promise<void> {
+export async function lockStockRows(tx: Tx, tenantId: string, productIds: string[]): Promise<Map<string, number>> {
   const ids = [...new Set(productIds)].sort();
-  if (ids.length === 0) return;
-  await tx.$queryRaw`
-    SELECT id FROM products
+  if (ids.length === 0) return new Map();
+  // Остаток — тем же запросом: после блокировки он уже не изменится, и
+  // большому приходу не нужно перечитывать его по запросу на строку, пока
+  // кассы ждут блокировку.
+  const rows = await tx.$queryRaw<{ id: string; current_stock: number }[]>`
+    SELECT id, current_stock FROM products
     WHERE tenant_id = ${tenantId} AND id IN (${Prisma.join(ids)})
     ORDER BY id COLLATE "C"
     FOR NO KEY UPDATE`;
+  return new Map(rows.map((r) => [r.id, r.current_stock]));
 }
 
 export interface Reservation {

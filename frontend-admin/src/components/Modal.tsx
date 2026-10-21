@@ -8,6 +8,12 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  /**
+   * false — окно сейчас не закрыть: идёт запись, и её результат (номер
+   * прихода, ключ повтора) живёт в самом окне. Крестик выключен, Escape и
+   * клик мимо окна ничего не делают.
+   */
+  closable?: boolean;
 }
 
 const sizeMap = {
@@ -24,14 +30,16 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
  * Tab не уходит за окно, Escape закрывает, после закрытия фокус возвращается
  * на кнопку, которая окно открыла. Прокрутка страницы под окном выключена.
  */
-export default function Modal({ isOpen, onClose, title, children, size = "md" }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, size = "md", closable = true }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   // onClose из родителя часто новая функция на каждый рендер — эффект ниже не
   // должен из-за этого перезапускаться и дёргать фокус.
   const onCloseRef = useRef(onClose);
+  const closableRef = useRef(closable);
   useLayoutEffect(() => {
     onCloseRef.current = onClose;
+    closableRef.current = closable;
   });
 
   useEffect(() => {
@@ -50,7 +58,7 @@ export default function Modal({ isOpen, onClose, title, children, size = "md" }:
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onCloseRef.current();
+        if (closableRef.current) onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -84,7 +92,7 @@ export default function Modal({ isOpen, onClose, title, children, size = "md" }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50 transition-opacity" onClick={onClose} aria-hidden />
+      <div className="fixed inset-0 bg-black/50 transition-opacity" onClick={closable ? onClose : undefined} aria-hidden />
       <div
         ref={dialogRef}
         role="dialog"
@@ -98,7 +106,13 @@ export default function Modal({ isOpen, onClose, title, children, size = "md" }:
             <h2 id={titleId} className="text-lg font-semibold text-gray-900">
               {title}
             </h2>
-            <button onClick={onClose} aria-label="Закрыть" className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-600">
+            <button
+              onClick={onClose}
+              disabled={!closable}
+              aria-label="Закрыть"
+              title={closable ? undefined : "Подождите — идёт запись"}
+              className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            >
               <X className="h-5 w-5" />
             </button>
           </div>
