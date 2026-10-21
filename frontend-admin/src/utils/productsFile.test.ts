@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { autoMap, decodeCsv, findHeaderRow, parseCsv, productsCsv, toImportRows, type ExportProduct } from "./productsFile";
+import { assignColumn, autoMap, decodeCsv, findHeaderRow, parseCsv, productsCsv, toImportRows, type ExportProduct } from "./productsFile";
 
 // Файл товаров: свой шаблон, выгрузка из 1С, CSV из русского Excel.
 
@@ -17,6 +17,19 @@ describe("columns", () => {
   it("matches a title with a tail and never gives one column to two fields", () => {
     const m = autoMap(["Наименование товара", "Цена, сўм", "Цена закупки, сўм"]);
     expect(m).toMatchObject({ name: 0, price: 1, costPrice: 2 });
+  });
+
+  it("gives «Цена закупки» to the cost even without a sale price column", () => {
+    expect(autoMap(["Товар", "Количество", "Цена закупки"])).toMatchObject({ name: 0, stock: 1, costPrice: 2, price: null });
+    // Порядок колонок не важен: длинное совпадение («цена закупки») сильнее короткого («цена»).
+    expect(autoMap(["Цена закупки, сўм", "Цена, сўм"])).toMatchObject({ costPrice: 0, price: 1 });
+  });
+
+  it("gives a column to one field only: picking it for another takes it away", () => {
+    const m = autoMap(["Наименование", "Кол-во", "Цена"]);
+    expect(m).toMatchObject({ price: 2, costPrice: null });
+    expect(assignColumn(m, "costPrice", 2)).toMatchObject({ price: null, costPrice: 2, name: 0, stock: 1 });
+    expect(assignColumn(m, "price", null)).toMatchObject({ price: null, name: 0 });
   });
 
   it("finds the header row under a 1С report title", () => {

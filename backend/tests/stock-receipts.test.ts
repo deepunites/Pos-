@@ -100,6 +100,61 @@ describe("Stock receipts", () => {
     expect(ayran).toMatchObject({ currentStock: 12, costPrice: 5000, price: 6000, categoryId: categories[0].id });
   });
 
+  it("keeps the barcode and the supplier's SKU of a new product", async () => {
+    const res = await receive([
+      { newProduct: { name: "Тан 0,5 л", barcode: "4780000555001", sku: "TAN-05" }, quantity: 3, costPrice: 4000, salePrice: 5500 },
+    ]);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const tan = await prisma.product.findFirstOrThrow({ where: { tenantId: testTenantId, name: "Тан 0,5 л" } });
+    expect(tan).toMatchObject({ barcode: "4780000555001", sku: "TAN-05", price: 5500, currentStock: 3 });
+  });
+
+  it("files a new product under a shelf category of that name whatever the case, never under recipe ingredients", async () => {
+    const ingredients = await prisma.category.create({ data: { tenantId: testTenantId, name: "Сыры", isIngredient: true, markupPercent: 0 } });
+    const sweets = await prisma.category.create({ data: { tenantId: testTenantId, name: "Сладости", markupPercent: 50 } });
+
+    const res = await receive([
+      { newProduct: { name: "Сыр Гауда", newCategoryName: "Сыры" }, quantity: 2, costPrice: 1000 },
+      { newProduct: { name: "Халва ванильная", newCategoryName: "СЛАДОСТИ" }, quantity: 3, costPrice: 1000 },
+    ]);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+
+    const cheese = await prisma.product.findFirstOrThrow({ where: { tenantId: testTenantId, name: "Сыр Гауда" }, include: { category: true } });
+    expect(cheese.categoryId).not.toBe(ingredients.id);
+    // Новая «полка» с наценкой заведения (20%), а не наценка ингредиентов (0%).
+    expect(cheese.category).toMatchObject({ name: "Сыры", isIngredient: false, markupPercent: 20 });
+    expect(cheese.price).toBe(1200);
+    const halva = await prisma.product.findFirstOrThrow({ where: { tenantId: testTenantId, name: "Халва ванильная" } });
+    expect(halva).toMatchObject({ categoryId: sweets.id, price: 1500 });
+  });
+
+  it("books two lines of the same product one after the other", async () => {
+    const p = await product((await category(25)).id);
+    const before = (await row(p.id)).updatedAt;
+
+    const res = await receive([
+      { productId: p.id, quantity: 4, costPrice: 60, salePrice: 130 },
+      { productId: p.id, quantity: 1.5, costPrice: 70 },
+    ]);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.data.totalAmount).toBe(345);
+    // Остаток — оба прихода, себестоимость — последняя, цена — заданная в первой строке.
+    const after = await row(p.id);
+    expect(after).toMatchObject({ currentStock: 15.5, costPrice: 70, price: 130 });
+    expect(after.updatedAt.getTime()).toBeGreaterThan(before.getTime());
+    expect(Math.abs(after.updatedAt.getTime() - Date.now())).toBeLessThan(60_000);
+    const moves = await prisma.inventoryMovement.findMany({ where: { productId: p.id } });
+    expect(moves.map((m) => [m.type, m.quantity]).sort()).toEqual([["in", 1.5], ["in", 4]]);
+  });
+
+  it("takes at most 2000 lines in one receipt", async () => {
+    const p = await product((await category(0)).id);
+    const res = await receive(Array.from({ length: 2001 }, () => ({ productId: p.id, quantity: 1, costPrice: 1 })));
+    expect(res.status).toBe(400);
+    expect((await row(p.id)).currentStock).toBe(10);
+  });
+
   it("does not create a new product without a price when the markup is zero", async () => {
     const cat = await category(0);
     await prisma.tenant.update({ where: { id: testTenantId }, data: { defaultMarkupPercent: 0 } });

@@ -30,22 +30,65 @@ export interface Table {
   rows: Cell[][];
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").replace(/[.\s/_-]+/g, " ").trim();
+/** Название колонки для сравнения: без регистра, «ё», точек, дефисов и лишних пробелов. */
+export const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").replace(/[.\s/_-]+/g, " ").trim();
 
-/** Какая колонка файла что значит — по названиям колонок. null — не нашлась. */
-export function autoMap(headers: Cell[]): Record<FieldKey, number | null> {
+/**
+ * Какая колонка файла что значит — по названиям колонок. null — не нашлась.
+ * fields — поля мастера со своими синонимами (у прихода «Количество» сильнее
+ * «Остатка»); поле не из fields — всегда null.
+ */
+export function autoMap(headers: Cell[], fields: FieldDef[] = FIELDS): Record<FieldKey, number | null> {
   const titles = headers.map((h) => norm(String(h ?? "")));
   const used = new Set<number>();
-  const result = {} as Record<FieldKey, number | null>;
-  for (const field of FIELDS) {
-    const synonyms = field.synonyms.map(norm);
-    // Сначала точное совпадение, потом «начинается с» («Цена продажи, сўм»).
-    let index = titles.findIndex((t, i) => !used.has(i) && synonyms.includes(t));
-    if (index < 0) index = titles.findIndex((t, i) => !used.has(i) && t !== "" && synonyms.some((s) => t.startsWith(s)));
-    result[field.key] = index >= 0 ? index : null;
-    if (index >= 0) used.add(index);
+  const result = Object.fromEntries(FIELDS.map((f) => [f.key, null])) as Record<FieldKey, number | null>;
+  const synonyms = new Map(fields.map((f) => [f.key, f.synonyms.map(norm)]));
+  // Сначала точные совпадения у всех полей, потом «начинается с» («Цена продажи, сўм»).
+  // По одному полю за раз «цена» у цены продажи забирала колонку «Цена закупки»
+  // раньше, чем до неё доходила себестоимость, — в приходе цена закупки
+  // попадала в цену продажи.
+  // Точное — по порядку синонимов, а не колонок: первый синоним самый точный.
+  // Иначе в выгрузке товаров с дописанной справа «Количество» количеством
+  // прихода становился «Остаток», стоящий левее, — текущий остаток склада.
+  for (const field of fields) {
+    for (const synonym of synonyms.get(field.key)!) {
+      const index = titles.findIndex((t, i) => !used.has(i) && t === synonym);
+      if (index < 0) continue;
+      result[field.key] = index;
+      used.add(index);
+      break;
+    }
+  }
+  // Из «начинается с» выигрывает самое длинное совпадение: «Цена закупки, сўм»
+  // — себестоимость («цена закупки»), а не цена продажи («цена»).
+  const candidates: { key: FieldKey; index: number; length: number }[] = [];
+  for (const field of fields) {
+    if (result[field.key] !== null) continue;
+    titles.forEach((t, index) => {
+      if (used.has(index) || t === "") return;
+      const length = Math.max(0, ...synonyms.get(field.key)!.filter((s) => t.startsWith(s)).map((s) => s.length));
+      if (length > 0) candidates.push({ key: field.key, index, length });
+    });
+  }
+  candidates.sort((a, b) => b.length - a.length);
+  for (const c of candidates) {
+    if (result[c.key] !== null || used.has(c.index)) continue;
+    result[c.key] = c.index;
+    used.add(c.index);
   }
   return result;
+}
+
+/**
+ * Колонка — одному полю: выбранная для поля, она снимается с остальных. Иначе
+ * «Цена» накладной могла стать и ценой продажи, и себестоимостью сразу — и
+ * приход ставил цену продажи, равную закупке.
+ */
+export function assignColumn(mapping: Record<FieldKey, number | null>, key: FieldKey, column: number | null): Record<FieldKey, number | null> {
+  const next = { ...mapping };
+  if (column !== null) for (const k of Object.keys(next) as FieldKey[]) if (next[k] === column) next[k] = null;
+  next[key] = column;
+  return next;
 }
 
 /** Строка заголовков: в выгрузках 1С над таблицей бывают строки с названием отчёта и датой. */
@@ -235,13 +278,24 @@ export function downloadTemplate(): Promise<void> {
   return downloadXlsx([TEMPLATE_EXAMPLE], "Шаблон импорта товаров.xlsx");
 }
 
-/** Строки с ошибками как были в файле + колонка «Ошибка»: исправить и загрузить снова. */
-export async function downloadErrorRows(headers: Cell[], rows: { cells: Cell[]; message: string }[], fileName: string): Promise<void> {
+/**
+ * Строки как были в файле + колонка «Ошибка»: исправить и загрузить снова.
+ * Импорт товаров отдаёт только строки с ошибками (остальные уже загружены),
+ * приход — весь файл: он проводится только целиком, а помечены в нём и
+ * новые товары (колонка «Проверка») — вдруг это опечатка в названии.
+ */
+export async function downloadErrorRows(
+  headers: Cell[],
+  rows: { cells: Cell[]; message: string }[],
+  fileName: string,
+  sheet = "Ошибки",
+  column = "Ошибка"
+): Promise<void> {
   const { default: writeXlsxFile } = await import("write-excel-file/browser");
   const plain = (v: Cell) => (v === null || v === undefined ? undefined : typeof v === "number" ? v : v instanceof Date ? v.toISOString().slice(0, 10) : String(v));
   const width = Math.max(headers.length, ...rows.map((r) => r.cells.length));
   const pad = (cells: Cell[]) => Array.from({ length: width }, (_, i) => ({ value: plain(cells[i] ?? null) }));
-  const header = [...pad(headers).map((c) => ({ ...c, fontWeight: "bold" as const })), { value: "Ошибка", fontWeight: "bold" as const }];
+  const header = [...pad(headers).map((c) => ({ ...c, fontWeight: "bold" as const })), { value: column, fontWeight: "bold" as const }];
   const body = rows.map((r) => [...pad(r.cells), { value: r.message }]);
-  await writeXlsxFile([header, ...body], { sheet: "Ошибки" }).toFile(fileName);
+  await writeXlsxFile([header, ...body], { sheet }).toFile(fileName);
 }

@@ -63,7 +63,8 @@ const MAX_ITEMS = 500;
 const BATCH = 200;
 const EPS = 0.0005;
 
-const text = (v: unknown): string | undefined => {
+/** Ячейка как текст: пробелы схлопнуты, пустая — undefined. */
+export const text = (v: unknown): string | undefined => {
   if (v === null || v === undefined) return undefined;
   const s = String(v).replace(/\s+/g, " ").trim();
   return s === "" ? undefined : s;
@@ -83,7 +84,11 @@ export function parseAmount(v: unknown, money = false): number | undefined {
   // «1.234,5» — точка тысяч, запятая дроби; «1,234.5» — наоборот.
   if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   else s = s.replace(",", ".");
-  return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+  if (!/^-?\d+(\.\d+)?$/.test(s)) return NaN;
+  // Строка из сотен цифр — Infinity, а не число: как и у числовой ячейки
+  // выше, это «не число», а не бесконечный остаток или цена.
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
 }
 
 /** Весовой ли товар по единице из файла: «кг», «kg», «килограмм». Пусто — неизвестно. */
@@ -94,10 +99,10 @@ export function weighedUnit(v: unknown): boolean | undefined {
 }
 
 /** Название для сравнения: без регистра и лишних пробелов. */
-const nameKey = (name: string): string => name.trim().replace(/\s+/g, " ").toLowerCase();
+export const nameKey = (name: string): string => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 /** Ключ штрихкода для сравнения: «054881005500» и «54881005500» — один товар (UPC-A и EAN-13). */
-const barcodeKey = (code: string): string => (/^\d+$/.test(code) ? code.replace(/^0+/, "") : code.toLowerCase());
+export const barcodeKey = (code: string): string => (/^\d+$/.test(code) ? code.replace(/^0+/, "") : code.toLowerCase());
 
 type ExistingProduct = {
   id: string;

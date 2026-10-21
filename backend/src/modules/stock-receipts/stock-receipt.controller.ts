@@ -5,6 +5,8 @@ import prisma from "../../config/database.js";
 import { sendSuccess, sendPaginated } from "../../utils/response.js";
 import { handleError } from "../../utils/errors.js";
 import { idempotencyFrom, withIdempotency } from "../../utils/idempotency.js";
+import { importStockReceipt, replayStockReceiptImport } from "./stock-receipt.import.js";
+import type { ImportStockReceiptInput } from "./stock-receipt.schema.js";
 
 export class StockReceiptController {
   async create(req: Request, res: Response) {
@@ -21,6 +23,31 @@ export class StockReceiptController {
       );
       if (replayed) res.setHeader("Idempotent-Replayed", "true");
       sendSuccess(res, receipt, "Приход создан", 201);
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+
+  /** Приход из Excel/CSV: apply=false — проверка («что будет»), true — один документ прихода. */
+  async importRows(req: Request, res: Response) {
+    try {
+      const tenantId = req.user!.tenantId;
+      const data = req.body as ImportStockReceiptInput;
+      if (!data.apply) {
+        sendSuccess(res, await importStockReceipt(tenantId, req.user!.id, data));
+        return;
+      }
+      const idem = idempotencyFrom(req, "POST /stock-receipts/import");
+      // Ответ потерялся, админка шлёт файл ещё раз — тот же приход, а не второй
+      // с двойным остатком.
+      const { value, replayed } = await withIdempotency(
+        tenantId,
+        idem,
+        () => importStockReceipt(tenantId, req.user!.id, data, idem),
+        (id) => replayStockReceiptImport(tenantId, data, id, idem!)
+      );
+      if (replayed) res.setHeader("Idempotent-Replayed", "true");
+      sendSuccess(res, value, "Приход создан", 201);
     } catch (error) {
       handleError(res, error);
     }

@@ -4,10 +4,11 @@ import { stockReceiptService, productService } from "../services";
 import LoadingSpinner from "../components/LoadingSpinner";
 import Modal from "../components/Modal";
 import toast from "react-hot-toast";
-import { Plus, Trash2, Calendar, Building2, Eye, Search, Truck, Camera, History, ScanBarcode } from "lucide-react";
+import { Plus, Trash2, Calendar, Building2, Eye, Search, Truck, Camera, History, ScanBarcode, Upload } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import BarcodeCamera from "../components/BarcodeCamera";
+import ImportReceiptModal from "../components/ImportReceiptModal";
 import { useIsRetail } from "../hooks/useSettings";
 import { lookupBarcode } from "../utils/barcodeLookup";
 import EmptyState from "../components/EmptyState";
@@ -46,6 +47,7 @@ interface Receipt {
 export default function StockReceipts() {
   const { money } = useMoney();
   const [showCreate, setShowCreate] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [showDetail, setShowDetail] = useState<Receipt | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -260,10 +262,18 @@ export default function StockReceipts() {
           <h1 className="text-2xl font-bold text-gray-900">Приход товаров</h1>
           <p className="text-gray-500">Оформление поставок на склад</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="btn-primary">
-          <Plus className="mr-2 h-4 w-4" />
-          Новый приход
-        </button>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* Панель открыта только администратору и менеджеру (utils/access.ts), а
+              маршрут импорта закрыт на бэкенде теми же ролями — отдельной проверки не нужно. */}
+          <button type="button" onClick={() => setImportOpen(true)} className="btn-secondary whitespace-nowrap" title="Провести приход по накладной из Excel или CSV: новые товары заведутся сами">
+            <Upload className="mr-2 h-4 w-4" />
+            Из Excel
+          </button>
+          <button onClick={() => setShowCreate(true)} className="btn-primary whitespace-nowrap">
+            <Plus className="mr-2 h-4 w-4" />
+            Новый приход
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -320,10 +330,16 @@ export default function StockReceipts() {
                       title="Приходов пока нет"
                       description="Приход — это поступление товара от поставщика: остатки растут, себестоимость пересчитывается по цене закупки."
                       action={
-                        <button onClick={() => setShowCreate(true)} className="btn-primary">
-                          <Plus className="mr-2 h-4 w-4" />
-                          Оформить приход
-                        </button>
+                        <>
+                          <button onClick={() => setShowCreate(true)} className="btn-primary">
+                            <Plus className="mr-2 h-4 w-4" />
+                            Оформить приход
+                          </button>
+                          <button type="button" onClick={() => setImportOpen(true)} className="btn-secondary">
+                            <Upload className="mr-2 h-4 w-4" />
+                            Из Excel
+                          </button>
+                        </>
                       }
                     />
                   </td>
@@ -559,6 +575,8 @@ export default function StockReceipts() {
           </div>
         </div>
       </Modal>
+
+      {importOpen && <ImportReceiptModal onClose={() => setImportOpen(false)} />}
 
       {scanning && (
         <BarcodeCamera
